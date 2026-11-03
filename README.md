@@ -91,3 +91,8 @@ git switch main && git merge upstream   # conflicts show exactly where Herdr and
 ## Requirements
 
 herdr-app 0.1.12 or later, `git`, `rsync`, `python3`. Session-ID hooks and `sysstat` need Linux.
+
+## License
+
+MIT, see [LICENSE](LICENSE). `agents-ids` and `spaces-plus` build on the `agents` and `spaces` mods
+that ship with herdr-app (see the `upstream` branch).
