@@ -1,0 +1,5 @@
+# Editor type files Herdr writes into every mod folder (Herdr's, not ours)
+gpui-kit.d.ts
+jsconfig.json
+.worktrees/
+__pycache__/
