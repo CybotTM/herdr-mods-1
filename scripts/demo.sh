@@ -104,7 +104,7 @@ start() {
     herdr-app status >/dev/null 2>&1 || { echo "The demo window didn't start; see $DEMO/app.log" >&2; exit 1; }
   fi
   HERDR_APP_CONFIG="$HERDR_APP_HOME" "$REPO/install.sh" --mods-only >/dev/null
-  cp "$REPO/layouts/main-plus.json" "$HERDR_APP_HOME/layouts/main-plus.json"
+  cp "$REPO/layout/main-plus.json" "$HERDR_APP_HOME/layouts/main-plus.json"
   do_ layout.switch '{"name":"main-plus"}'
   do_ window.maximize
   do_ app.zoom_in
@@ -131,10 +131,10 @@ from PIL import Image
 shot, repo, *crops = sys.argv[1:]
 im = Image.open(shot)
 print(f"shot {im.size[0]}x{im.size[1]}: {shot}")
-im.save(f"{repo}/preview.png")
+im.save(f"{repo}/docs/window.png")
 for mod, box in zip(["spaces-plus", "agents-ids", "sysstat"], crops):
-    im.crop(tuple(int(v) for v in box.split())).save(f"{repo}/mods/{mod}/preview.png")
-    print(f"  mods/{mod}/preview.png <- {box}")
+    im.crop(tuple(int(v) for v in box.split())).save(f"{repo}/{mod}/preview.png")
+    print(f"  {mod}/preview.png <- {box}")
 PY
 }
 

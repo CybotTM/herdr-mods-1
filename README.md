@@ -4,17 +4,17 @@ Three mods for the [Herdr desktop app](https://herdr.dev) (herdr-app) that put m
 into the sidebar: which session each coding agent is running, what changed in each space, and how
 busy the machine is.
 
-![herdr-app with all three mods](preview.png)
+![herdr-app with all three mods](docs/window.png)
 
 | Mod | What it adds |
 |---|---|
-| [**agents-ids**](mods/agents-ids/RECIPE.md) | A second line under every agent: terminal address and short session ID (click to copy). *Recent sessions* below, with **Resume** for agents that ended. Claude Code, Codex, Pi, PiG, OpenCode and Hermes, or any agent that sets one label. |
-| [**spaces-plus**](mods/spaces-plus/RECIPE.md) | Git changes, tab count and agent status per space, the active space's tabs, the ports its programs listen on and its branch's pull request (click to open), CPU and memory per machine, recent spaces to reopen. |
-| [**sysstat**](mods/sysstat/RECIPE.md) | CPU with a one-minute sparkline, memory and AMD GPU in the status bar, for the machine of the space you're looking at. Click for `btop`. |
+| [**agents-ids**](agents-ids/RECIPE.md) | A second line under every agent: terminal address and short session ID (click to copy). *Recent sessions* below, with **Resume** for agents that ended. Claude Code, Codex, Pi, PiG, OpenCode and Hermes, or any agent that sets one label. |
+| [**spaces-plus**](spaces-plus/RECIPE.md) | Git changes, tab count and agent status per space, the active space's tabs, the ports its programs listen on and its branch's pull request (click to open), CPU and memory per machine, recent spaces to reopen. |
+| [**sysstat**](sysstat/RECIPE.md) | CPU with a one-minute sparkline, memory and AMD GPU in the status bar, for the machine of the space you're looking at. Click for `btop`. |
 
 <p>
-  <img src="mods/agents-ids/preview.png" alt="Agents list with terminal addresses, session IDs and recent sessions to resume" height="260">
-  <img src="mods/spaces-plus/preview.png" alt="Spaces list with git changes, a pull request badge and a port" height="234">
+  <img src="agents-ids/preview.png" alt="Agents list with terminal addresses, session IDs and recent sessions to resume" height="260">
+  <img src="spaces-plus/preview.png" alt="Spaces list with git changes, a pull request badge and a port" height="234">
 </p>
 
 What changed between versions: [CHANGELOG.md](CHANGELOG.md).
@@ -38,8 +38,10 @@ Prefer your own layout? Clone it and set `content.mod` of the `spaces` and `agen
 `spaces-plus` and `agents-ids`; add a `sysstat` block where you want the bar (it docks at the bottom by
 itself the first time Herdr sees it).
 
-Asking an agent instead? Point it at a mod's folder on GitHub; herdr-app's own `AGENTS.md` tells it how
-to add a shared mod, and each `RECIPE.md` is the brief to rebuild one from scratch.
+Asking an agent instead? Point it at a mod's folder on GitHub (or its page on
+[herdr.dev/mods](https://herdr.dev/mods)); herdr-app's own `AGENTS.md` tells it how to add a shared mod,
+and each `RECIPE.md` is the brief to rebuild one from scratch. Each mod is one folder in herdr.dev's
+shape: `<name>/RECIPE.md`, `<name>/preview.png` and the mod itself in `<name>/mods/<name>/`.
 
 ## Session IDs: how agents report them
 
@@ -78,9 +80,8 @@ To remove a hook, delete its line or file from the places above.
 
 ```sh
 ./install.sh --watch    # copy mods into herdr-app, then re-copy on every save
-node mods/agents-ids/test_logic.mjs && node mods/spaces-plus/test_logic.mjs && node mods/sysstat/test_logic.mjs
+for m in agents-ids spaces-plus sysstat; do node $m/mods/$m/test_logic.mjs && herdr-app check $m/mods/$m; done
 python3 -I tests/test_label.py && python3 -I tests/test_hermes_plugin.py
-for m in mods/*/; do herdr-app check "$m"; done
 scripts/demo.sh start   # screenshots from a demo window with its own herdr-core; then `shot`, `stop`
 ```
 
@@ -96,8 +97,8 @@ branch holds those shipped files unchanged, at the same paths. When a herdr-app 
 
 ```sh
 git switch upstream
-cp ~/.config/herdr-app/mods/agents/main.js mods/agents-ids/main.js
-cp ~/.config/herdr-app/mods/spaces/main.js mods/spaces-plus/main.js
+cp ~/.config/herdr-app/mods/agents/main.js agents-ids/mods/agents-ids/main.js
+cp ~/.config/herdr-app/mods/spaces/main.js spaces-plus/mods/spaces-plus/main.js
 git commit -am "Herdr's agents and spaces from herdr-app <version>"
 git switch main && git merge upstream   # conflicts show exactly where Herdr and these mods both changed
 ```

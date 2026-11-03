@@ -10,18 +10,24 @@ integrations that make coding agents report their session IDs to it:
 
 | Path | What |
 |---|---|
-| `mods/agents-ids/` | Herdr's `agents` mod + session-ID line + Recent sessions with Resume |
-| `mods/spaces-plus/` | Herdr's `spaces` mod + git line, status, tabs, ports, PR badge, machine load |
-| `mods/sysstat/` | Status bar: CPU (sparkline), memory, AMD GPU of the shown space's machine |
+| `agents-ids/` | Herdr's `agents` mod + session-ID line + Recent sessions with Resume |
+| `spaces-plus/` | Herdr's `spaces` mod + git line, status, tabs, ports, PR badge, machine load |
+| `sysstat/` | Status bar: CPU (sparkline), memory, AMD GPU of the shown space's machine |
 | `integrations/bin/agent-session-label` | The one script every hook calls; writes the labels |
 | `integrations/{pi,opencode,hermes}/` | Pi/PiG extension, OpenCode TUI plugin, Hermes plugin |
 | `install.sh` | Copies mods, links integrations, adds Claude Code / Codex hooks, once |
-| `layouts/main-plus.json` | Herdr's `main` layout with the three mods |
+| `layout/main-plus.json` | Herdr's `main` layout with the three mods (installed, not listed) |
 | `scripts/demo.sh` | Isolated demo window for screenshots |
+| `docs/window.png` | The README's whole-window screenshot |
 | `tests/` | Self-checks for the Python pieces |
 
-Each mod folder is what herdr.dev lists: `main.js`, `mod.json`, `RECIPE.md` (the brief to rebuild it
-from scratch), `preview.png`, plus the mod's own helper module and `test_logic.mjs`.
+Each mod is one folder in the shape herdr.dev indexes (repo topic `herdr-mod`): `<name>/RECIPE.md`
+(the brief to rebuild it from scratch), `<name>/preview.png`, and the mod itself in
+`<name>/mods/<name>/` (`main.js`, `mod.json`, its helper module, `test_logic.mjs`). Keep that shape:
+herdr.dev skips a folder without `RECIPE.md` and `preview.png` beside `mods/`, and no mod folder may
+hold a `layouts/` folder. A new mod gets a new top-level folder the same way. The layout is not listed
+on herdr.dev (a layout package would need its own copies of the mods); it lives in `layout/`, which
+`install.sh` copies to herdr-app's `layouts/`.
 
 ## Ground rules
 
@@ -74,9 +80,8 @@ from scratch), `preview.png`, plus the mod's own helper module and `test_logic.m
 Run all of these before every commit; all must pass:
 
 ```sh
-node mods/agents-ids/test_logic.mjs && node mods/spaces-plus/test_logic.mjs && node mods/sysstat/test_logic.mjs
+for m in agents-ids spaces-plus sysstat; do node $m/mods/$m/test_logic.mjs && herdr-app check $m/mods/$m; done
 python3 -I tests/test_label.py && python3 -I tests/test_hermes_plugin.py
-for m in mods/*/; do herdr-app check "$m"; done
 shellcheck -S warning install.sh scripts/demo.sh
 ```
 
@@ -101,8 +106,8 @@ When a herdr-app update changes them:
 
 ```sh
 git switch upstream
-cp ~/.config/herdr-app/mods/agents/main.js mods/agents-ids/main.js
-cp ~/.config/herdr-app/mods/spaces/main.js mods/spaces-plus/main.js
+cp ~/.config/herdr-app/mods/agents/main.js agents-ids/mods/agents-ids/main.js
+cp ~/.config/herdr-app/mods/spaces/main.js spaces-plus/mods/spaces-plus/main.js
 git commit -am "Herdr's agents and spaces from herdr-app <version>"
 git switch main && git merge upstream
 ```

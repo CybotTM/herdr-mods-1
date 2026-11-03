@@ -41,7 +41,7 @@ link() {
   echo "  $2"
 }
 
-# Mods are copied, not linked: herdr-app hot-reloads a mod only when a file in its own folder
+# Each mod lives in <name>/mods/<name>/ (herdr.dev's one-folder-per-mod shape). Mods are copied, not linked: herdr-app hot-reloads a mod only when a file in its own folder
 # changes, and an edit behind a symlink never reaches that folder. A marker file tells our copies apart.
 copy_mods() {
   local m dst
@@ -50,7 +50,7 @@ copy_mods() {
     if [ -L "$dst" ]; then rm "$dst"; elif [ -e "$dst" ] && [ ! -e "$dst/.herdr-mods" ]; then aside "$dst"; fi
     mkdir -p "$dst"
     # rsync writes only changed files, so herdr-app reloads only what changed; it keeps the editor type files Herdr writes
-    rsync -a --delete --exclude gpui-kit.d.ts --exclude jsconfig.json --exclude .herdr-mods "$REPO/mods/$m/" "$dst/"
+    rsync -a --delete --exclude gpui-kit.d.ts --exclude jsconfig.json --exclude .herdr-mods "$REPO/$m/mods/$m/" "$dst/"
     touch "$dst/.herdr-mods"
   done
 }
@@ -80,14 +80,14 @@ echo "Mods -> $APP/mods"
 copy_mods
 command -v herdr-app >/dev/null && for m in agents-ids spaces-plus sysstat; do herdr-app check "$APP/mods/$m" | tail -1; done
 if [ ! -e "$APP/layouts/main-plus.json" ]; then
-  mkdir -p "$APP/layouts" && cp "$REPO/layouts/main-plus.json" "$APP/layouts/"
+  mkdir -p "$APP/layouts" && cp "$REPO/layout/main-plus.json" "$APP/layouts/"
   echo "  layout main-plus added: herdr-app do layout.switch '{\"name\":\"main-plus\"}'"
-elif ! cmp -s "$REPO/layouts/main-plus.json" "$APP/layouts/main-plus.json"; then
-  echo "  kept your edited layouts/main-plus.json (the repo's copy is $REPO/layouts/main-plus.json)"
+elif ! cmp -s "$REPO/layout/main-plus.json" "$APP/layouts/main-plus.json"; then
+  echo "  kept your edited layouts/main-plus.json (the repo's copy is $REPO/layout/main-plus.json)"
 fi
 
 if [ "$WATCH" = 1 ]; then
-  echo "Watching $REPO/mods (Ctrl+C to stop)"
+  echo "Watching $REPO/*/mods (Ctrl+C to stop)"
   while sleep 1; do copy_mods; done
 fi
 

@@ -8,6 +8,21 @@ a version (see [AGENTS.md](AGENTS.md#releases)).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-04
+
+### Fixed
+
+- herdr.dev can list the three mods: each is now one folder in the shape its index expects
+  (`agents-ids/RECIPE.md`, `agents-ids/preview.png`, the mod in `agents-ids/mods/agents-ids/`; the
+  same for `spaces-plus` and `sysstat`). The mods themselves are unchanged. After `git pull`, run
+  `./install.sh` again; it reads the new paths.
+
+### Changed
+
+- The `main-plus` layout moved to `layout/main-plus.json` and is no longer offered on
+  herdr.dev/layouts (a listed layout has to carry its own copies of the mods). `install.sh` still adds it.
+- The README's whole-window screenshot moved to `docs/window.png`.
+
 ## [0.2.0] - 2026-11-03
 
 ### Added
@@ -60,6 +75,7 @@ First public release.
   OpenCode (TUI plugin), all through `integrations/bin/agent-session-label`.
 - `install.sh` (`--mods-only`, `--watch`) and the `main-plus` layout.
 
-[Unreleased]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/DarkoKuzmanovic/herdr-mods/releases/tag/v0.1.0
