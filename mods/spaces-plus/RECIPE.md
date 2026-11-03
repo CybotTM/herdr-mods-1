@@ -2,8 +2,9 @@
 
 Herdr's Spaces list, telling you more without opening anything: what changed in each space's repo, how
 many tabs it has, which space has an agent working or waiting on you, and the active space's tabs right
-under it. Machines show how many spaces they hold, and an empty machine offers its recently closed
-spaces back.
+under it. It also shows the ports a space's programs listen on and the pull request of its branch (click
+either to open it), and how busy each machine is. Machines show how many spaces they hold, and an empty
+machine offers its recently closed spaces back.
 
 ![Spaces Plus](preview.png)
 
@@ -21,15 +22,32 @@ checkout, drag to reorder), with:
 - **The active space's tabs** under it (22px rows, indented 35px) when it has 2 or more: `1 · <title>`
   and `working 12m` / `needs you` / `done` in that status' color. Settled tabs fold into
   `› n tabs put away`; click to unfold.
-- **Machine rows** add the number of spaces and a green `connected` for a connected remote.
+- **Ports**, `:5173` chips in `accent` at the end of the second line (or after the branch on a worktree
+  row): TCP ports that programs running in the space's folder listen on. Hover: program and address;
+  click: opens `http://localhost:5173` (`http://<machine>:5173` for a remote space) in the browser.
+- **Pull request**, `#42` before the ports: the newest PR from the space's branch, green when open, `dim`
+  when draft, `ansi5` when merged; closed-unmerged ones are left out. Click opens it on GitHub.
+- **Machine rows** add the number of spaces, and CPU (`muted`) and memory (`dim`) in use (`12% 45%`, red from 90%) on
+  connected machines; a remote without a reading yet shows a green `connected`.
 - **Recent spaces** (up to 3, clock icon, `name · ~/folder`) under a machine with no spaces; click
   reopens one with `space.new`.
 - An unnamed `~` space takes the name of the agent running in it (`pi`, `claude`).
 
 **How it behaves:** click a space to switch, a tab row to select that tab; right-click and drag as in
-`spaces`. Working times refresh every 30 s. Git is re-read when the space's folder changes.
+`spaces`. Working times refresh every 30 s. Git is re-read when the space's folder changes. Ports are
+read every 10 s per machine, from a constant script: `ss -ltnpH` plus each listener's `/proc/<pid>/cwd`
+on Linux, `lsof` on macOS. A socket belongs to the space whose folder holds the program's folder most
+closely (a worktree's server shows on the worktree, not on the checkout around it); home folders take
+none; ports from 32768 up (private, ephemeral sockets) and the agents' own (`claude`, `codex`,
+`opencode`, `pi`, `hermes`) are left out. Pull requests come from
+`gh pr list --state all --json number,headRefName,state,isDraft,url` per repo, at most every 5 minutes,
+only for repos with a space on a branch other than `main`/`master`. Machine load reads `/proc/stat` and
+`/proc/meminfo` every 4 s. With the window in the background: ports once a minute, load every 30 s.
 
-**Built from:** a copy of the shipped `spaces` mod (herdr-app 0.1.12). Uses `spaces()`, `machines()`,
+**Built from:** a copy of the shipped `spaces` mod (herdr-app 0.1.12). Its own helpers are in
+`extras.mjs` (pure: `tilde`, `tabLabel`, `spaceName`, `changedCount`, `PORTS_SCRIPT`, `parseListeners`,
+`assignPorts`, `prsByBranch`, CPU/memory parsing). Uses `exec("sh", ["-c", PORTS_SCRIPT], { on })`,
+`exec("gh", …)`, `exec("xdg-open" | "open", [url])`, `readTextFile("/proc/…", { on })`, `spaces()`, `machines()`,
 `panes()` (tab titles, agent names), `exec("git", ["status", "--porcelain=v2", "--branch"])`,
 `readTextFile(appHome() + "/view.json")` for `recent` (no herdr function returns it), `run("tab.select")`,
 `run("space.new")`, and icons from the shipped `workspace-chrome` mod (`spinner.svg`, `clock.svg`,
@@ -39,6 +57,9 @@ checkout, drag to reorder), with:
 - `recent` entries may have no `machine` field; those are treated as this computer's.
 - Herdr keeps closed spaces in `recent` and has no command to drop one.
 - The git count runs `git status` per space; a huge repo makes the line appear a moment later.
+- No `gh`, or not logged in, or no GitHub remote: no badge, nothing else changes. Same for `ss`/`lsof`.
+- `ss` sees only your own processes' pids, which is what a space runs anyway.
+- A remote port bound to `127.0.0.1` there can't be opened from here; the tooltip shows the address.
 - The mod is a copy: when Herdr ships a new `spaces`, merge it (see the repo's README).
 
 **Done when:**
@@ -46,3 +67,5 @@ checkout, drag to reorder), with:
 - A space in a repo with one edited file shows `1 changed`; a second tab makes `2 tabs` appear and lists
   both tabs under the active space; `tab.settle` on one folds it into `1 tab put away`.
 - An agent waiting for approval shows `Needs you` on its space.
+- `python3 -m http.server 5173 --bind 127.0.0.1` in a space's folder shows `:5173` within 10 s; a
+  worktree on a branch with an open PR shows its `#number`.

@@ -1,13 +1,15 @@
 #!/usr/bin/env -S python3 -I
-"""Label this herdr-app terminal with the coding agent's session id (agent.session), for the agents-ids mod.
+"""Label this herdr-app terminal with the coding agent's session id (agent.session) and program
+(agent.app), for the agents-ids mod.
 
-Usage: agent-session-label <session-id> [agent-pid]
+Usage: agent-session-label <session-id> [agent-pid|-] [app]
        agent-session-label < hook.json        (JSON on stdin with "session_id": Claude Code, Codex hooks)
 
 Labels only when the agent is (a direct child of) the terminal's foreground job leader, so an agent
 started by another agent (one agent running `claude -p`, a script running codex) never overwrites the
-visible agent's label. Does nothing outside herdr-app (no HC_TERMINAL_ID). Linux only (/proc).
-Never fails loudly: a hook must not break the agent.
+visible agent's label. agent.app is that leader's process name (claude, codex, pi, pig, opencode)
+unless given. Does nothing outside herdr-app (no HC_TERMINAL_ID). Reads /proc on Linux, `ps`
+elsewhere (macOS). Never fails loudly: a hook must not break the agent.
 """
 import json
 import os
@@ -18,11 +20,15 @@ SHELLS = {"sh", "bash", "dash", "zsh", "fish", "env"}
 
 
 def stat(pid: int) -> tuple[str, int, int, int]:
-    """(comm, ppid, pgrp, tpgid) from /proc/<pid>/stat."""
-    raw = open(f"/proc/{pid}/stat").read()
-    comm = raw[raw.index("(") + 1:raw.rindex(")")]
-    f = raw[raw.rindex(")") + 2:].split()
-    return comm, int(f[1]), int(f[2]), int(f[5])
+    """(comm, ppid, pgrp, tpgid) of a process."""
+    if os.path.exists(f"/proc/{pid}/stat"):
+        raw = open(f"/proc/{pid}/stat").read()
+        comm = raw[raw.index("(") + 1:raw.rindex(")")]
+        f = raw[raw.rindex(")") + 2:].split()
+        return comm, int(f[1]), int(f[2]), int(f[5])
+    out = subprocess.run(["ps", "-o", "ppid=,pgid=,tpgid=,comm=", "-p", str(pid)],
+                         capture_output=True, text=True, timeout=3, check=True).stdout.split(None, 3)
+    return os.path.basename(out[3].strip()), int(out[0]), int(out[1]), int(out[2])
 
 
 def agent_pid(start: int) -> int:
@@ -30,7 +36,7 @@ def agent_pid(start: int) -> int:
     pid = start
     while pid > 1:
         comm, ppid, _, _ = stat(pid)
-        if comm not in SHELLS:
+        if comm.lstrip("-") not in SHELLS:
             return pid
         pid = ppid
     return 0
@@ -41,11 +47,14 @@ def foreground_leader(pid: int) -> bool:
     return pid == pgrp == tpgid
 
 
-def visible(pid: int) -> bool:
-    """The agent is the terminal's foreground job leader, or its direct child: Codex and OpenCode run
-    hooks/plugins in a child of the TUI process, PiG in a node child of its Go launcher. One level only,
+def leader(pid: int) -> int:
+    """The terminal's foreground job leader if pid is it or its direct child, else 0. Codex and OpenCode
+    run hooks/plugins in a child of the TUI process, PiG in a node child of its launcher. One level only,
     so an agent another agent started through a shell (Hermes -> bash -> claude) stays unlabelled."""
-    return foreground_leader(pid) or foreground_leader(stat(pid)[1])
+    if foreground_leader(pid):
+        return pid
+    parent = stat(pid)[1]
+    return parent if parent > 1 and foreground_leader(parent) else 0
 
 
 def main(argv: list[str]) -> int:
@@ -58,10 +67,12 @@ def main(argv: list[str]) -> int:
             sid = str(json.load(sys.stdin).get("session_id") or "")
         except ValueError:
             sid = ""
-    pid = int(argv[2]) if len(argv) > 2 else agent_pid(os.getppid())
-    if not sid or not pid or not visible(pid):
+    pid = int(argv[2]) if len(argv) > 2 and argv[2] not in ("", "-") else agent_pid(os.getppid())
+    front = leader(pid) if sid and pid else 0
+    if not front:
         return 0
-    subprocess.run(["hc", "label", term, f"agent.session={sid}"], timeout=3,
+    app = argv[3] if len(argv) > 3 else stat(front)[0]
+    subprocess.run(["hc", "label", term, f"agent.session={sid}", f"agent.app={app}"], timeout=3,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
     return 0
 

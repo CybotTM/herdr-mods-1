@@ -2,12 +2,14 @@
 // agents-ids: a copy of Herdr's shipped `agents` mod, plus a second row line with the terminal
 // address and the agent's session id, read from the terminal label `agent.session` (set by
 // integrations/ in github.com/DarkoKuzmanovic/herdr-mods, or by any agent: `hc label $HC_TERMINAL_ID agent.session=<id>`).
-// Click the line: copy the session id; Shift-click: copy the address. Merge `agents` updates via the repo's upstream branch.
+// Click the line: copy the session id; Shift-click: copy the address. Below the agents, "Recent
+// sessions": agents that ended in a terminal, with Resume. Merge `agents` updates via the repo's upstream branch.
 // A viewed done agent stays in Done until left.
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout } from "herdr";
+import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, hc } from "herdr";
+import { recentSessions, rememberSessions, shortSid } from "./extras.mjs";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -30,13 +32,6 @@ function toggleSidebar() {
   run("layout.resize", { id: "sidebar", px: narrow() ? (shared("sidebar.width") ?? 268) : window()?.platform === "macos" ? 76 : 44 });
 }
 
-// Short session id. Hermes drops "local-"; UUIDv7 ids (Pi, PiG, Codex) keep 13 chars, as their first 8
-// repeat for ~65 s; OpenCode's time-ordered "ses_…" ids show their last 8 (the random part).
-export const shortSid = (sid) => {
-  const s = (sid ?? "").replace(/^local-/, "");
-  if (/^ses_/.test(s)) return s.slice(-8);
-  return s.slice(0, /^[0-9a-f]{8}-[0-9a-f]{4}-7/i.test(s) ? 13 : 8);
-};
 const clean = (s) => (s ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
 
 function lead(tab, all = panes()) {
@@ -88,6 +83,8 @@ export default class Agents extends View {
     this.pendingPins = JSON.parse(localStorage.getItem("pins") ?? "[]");
     if (!this.pendingPins.length) localStorage.removeItem("pins");
     this.migratingPins = new Set();
+    // Agent sessions seen in a terminal (sid -> where, when), for Recent sessions.
+    this.remembered = JSON.parse(localStorage.getItem("sessions") ?? "{}");
     cx.timer.every(30000, (cx) => cx.notify());
   }
 
@@ -174,6 +171,53 @@ export default class Agents extends View {
 
   peek(addr) {
     run("terminal.peek", { terminal: addr });
+  }
+
+  // An agent session that ended: at a bare shell, the command is typed there; otherwise (finished,
+  // or another program in front) a new tab in its space and folder. argv holds plain words only.
+  resume(r) {
+    if (r.atShell) {
+      hc(["send", r.address, r.argv.join(" ")]).then(() => run("pane.focus", { terminal: r.address })).catch(() => {});
+    } else {
+      const space = spaces().some((s) => s.id === r.space) ? r.space : undefined;
+      run("tab.new", { space, folder: r.cwd ?? undefined, argv: r.argv });
+    }
+  }
+
+  recentRow(t, r) {
+    return h_flex()
+      .id(`recent-${r.address}`)
+      .px(8)
+      .h(28)
+      .flex_none()
+      .rounded(8)
+      .gap(6)
+      .items_center()
+      .text_size(12)
+      .hover((s) => s.bg(t.hover))
+      .tooltip(`${r.argv.join(" ")}\nin ${r.atShell ? `terminal ${r.address}` : `a new tab${r.cwd ? `, ${r.cwd}` : ""}`}\nsession ${r.sid}, last in ${r.address}\nclick: copy session id`)
+      .on_click((_e, cx) => cx.write_to_clipboard(r.sid))
+      .child(div().flex_none().text_color(t.muted).child(r.app))
+      // The folder says which work it was; a closed terminal's address may belong to another by now.
+      .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`${r.cwd ? r.cwd.replace(/\/+$/, "").split("/").pop() : r.address} \u00b7 ${shortSid(r.sid)}`))
+      .child(div()
+        .id(`resume-${r.address}`)
+        .flex_none()
+        .px(6)
+        .h(18)
+        .rounded(5)
+        .flex()
+        .items_center()
+        .text_size(10.5)
+        .font_semibold()
+        .text_color(t.accent)
+        .bg(t.accent + "1f")
+        .hover((s) => s.bg(t.accent + "3d"))
+        .on_click((_e, cx) => {
+          cx.stop_propagation();
+          this.resume(r);
+        })
+        .child("Resume"));
   }
 
   // Live sub-agents of `addr`, depth first, each with the tree lines in front of it.
@@ -425,6 +469,10 @@ export default class Agents extends View {
     const rows = collapsed
       ? list.flatMap(withKids)
       : groups.flatMap((g) => [header(g), ...(this.folded.has(g.id) ? [] : g.members.flatMap(withKids))]);
+    const store = rememberSessions(this.remembered, all, this.listed, now);
+    if (store !== this.remembered) localStorage.setItem("sessions", JSON.stringify((this.remembered = store)));
+    const recent = collapsed ? [] : recentSessions(all, this.listed, store);
+    if (recent.length) rows.push(header({ id: "recent", label: "Recent sessions", status: null, members: recent }), ...(this.folded.has("recent") ? [] : recent.map((r) => this.recentRow(t, r))));
 
     return v_flex()
       .size_full()

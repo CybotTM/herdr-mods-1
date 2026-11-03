@@ -8,14 +8,16 @@ busy the machine is.
 
 | Mod | What it adds |
 |---|---|
-| [**agents-ids**](mods/agents-ids/RECIPE.md) | A second line under every agent: terminal address and short session ID. Click to copy. Works with Claude Code, Codex, Pi, PiG and OpenCode, and any agent that sets one label. |
-| [**spaces-plus**](mods/spaces-plus/RECIPE.md) | Git changes, tab count and agent status per space, the active space's tabs, recent spaces to reopen. |
-| [**sysstat**](mods/sysstat/RECIPE.md) | CPU and memory in the status bar (Linux). |
+| [**agents-ids**](mods/agents-ids/RECIPE.md) | A second line under every agent: terminal address and short session ID (click to copy). *Recent sessions* below, with **Resume** for agents that ended. Claude Code, Codex, Pi, PiG, OpenCode and Hermes, or any agent that sets one label. |
+| [**spaces-plus**](mods/spaces-plus/RECIPE.md) | Git changes, tab count and agent status per space, the active space's tabs, the ports its programs listen on and its branch's pull request (click to open), CPU and memory per machine, recent spaces to reopen. |
+| [**sysstat**](mods/sysstat/RECIPE.md) | CPU with a one-minute sparkline, memory and AMD GPU in the status bar, for the machine of the space you're looking at. Click for `btop`. |
 
 <p>
-  <img src="mods/agents-ids/preview.png" alt="Agents list with terminal addresses and session IDs" height="300">
-  <img src="mods/spaces-plus/preview.png" alt="Spaces list with git changes, tabs and status" height="190">
+  <img src="mods/agents-ids/preview.png" alt="Agents list with terminal addresses, session IDs and recent sessions to resume" height="260">
+  <img src="mods/spaces-plus/preview.png" alt="Spaces list with git changes, a pull request badge and a port" height="234">
 </p>
+
+What changed between versions: [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
@@ -41,11 +43,11 @@ to add a shared mod, and each `RECIPE.md` is the brief to rebuild one from scrat
 
 ## Session IDs: how agents report them
 
-`agents-ids` reads one terminal label, `agent.session`. Anything running in a herdr-app terminal can set
-it:
+`agents-ids` reads two terminal labels: `agent.session` (the session ID) and `agent.app` (the program,
+so Resume knows the command). Anything running in a herdr-app terminal can set them:
 
 ```sh
-hc label "$HC_TERMINAL_ID" agent.session=<session-id>
+hc label "$HC_TERMINAL_ID" agent.session=<session-id> agent.app=claude
 ```
 
 `integrations/` does this for you (`./install.sh` sets up the ones whose config folder exists):
@@ -56,12 +58,19 @@ hc label "$HC_TERMINAL_ID" agent.session=<session-id>
 | Codex | `SessionStart` hook in `~/.codex/hooks.json` (needs `hooks = true` under `[features]`) | after the first prompt |
 | Pi, PiG | extension `agent-session.ts` in `~/.pi/agent/extensions/`, `~/.pig/agent/extensions/` | at start |
 | OpenCode | TUI plugin `agent-session-label/`, listed under `plugins` in `~/.config/opencode/cli.json` | after the first prompt |
-| Anything else | call `agent-session-label <id>` from its session-start hook | |
+| Hermes | plugin `agent-session-label/` in `~/.hermes/plugins/` (then `hermes plugins enable agent-session-label`) | at the first turn |
+| Anything else | call `agent-session-label <id> - <app>` from its session-start hook | |
 
 All of them call [`integrations/bin/agent-session-label`](integrations/bin/agent-session-label), linked
 into `~/.local/bin`. It labels only when the agent is the terminal's foreground program, so an agent
 that another agent starts in the background (`claude -p` from a script) can't overwrite the ID you see.
-Outside herdr-app it does nothing, and it never makes a hook fail. It reads `/proc`, so Linux only for now.
+Outside herdr-app it does nothing, and it never makes a hook fail. It reads `/proc` on Linux and falls
+back to `ps` elsewhere (macOS: written for, not yet tried).
+
+Resume runs `claude --resume <id>`, `codex resume <id>`, `pi --session <id>` (PiG: `pig`),
+`opencode --session <id>` or `hermes --resume <id>`, and only for IDs made of letters, digits, `-`, `_`
+and `.`. It types the command into the agent's old terminal when that is back at a bare shell, and
+otherwise opens a new tab in the same space and folder.
 
 To remove a hook, delete its line or file from the places above.
 
@@ -69,9 +78,14 @@ To remove a hook, delete its line or file from the places above.
 
 ```sh
 ./install.sh --watch    # copy mods into herdr-app, then re-copy on every save
-node mods/agents-ids/test_logic.mjs && node mods/spaces-plus/test_logic.mjs && python3 -I tests/test_label.py
-herdr-app check ~/.config/herdr-app/mods/agents-ids
+node mods/agents-ids/test_logic.mjs && node mods/spaces-plus/test_logic.mjs && node mods/sysstat/test_logic.mjs
+python3 -I tests/test_label.py && python3 -I tests/test_hermes_plugin.py
+for m in mods/*/; do herdr-app check "$m"; done
+scripts/demo.sh start   # screenshots from a demo window with its own herdr-core; then `shot`, `stop`
 ```
+
+[AGENTS.md](AGENTS.md) has the rules for changing the repo (for coding agents and people alike):
+where helpers go, the label contract, the checks, the changelog and how a release is made.
 
 Edit in this checkout, not in `~/.config/herdr-app/mods/`: `--watch` overwrites the copies there. The
 mods are copied rather than symlinked because herdr-app hot-reloads a mod only when a file in its own
@@ -90,7 +104,9 @@ git switch main && git merge upstream   # conflicts show exactly where Herdr and
 
 ## Requirements
 
-herdr-app 0.1.12 or later, `git`, `rsync`, `python3`. Session-ID hooks and `sysstat` need Linux.
+herdr-app 0.1.12 or later, `git`, `rsync`, `python3`. Optional, each feature stays hidden without it:
+`gh` (logged in) for pull request badges, `ss` or `lsof` for ports, `btop`/`htop` for sysstat's click.
+`sysstat` and the CPU/memory on machine rows read `/proc`, so they show Linux machines only.
 
 ## License
 

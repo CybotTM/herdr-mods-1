@@ -1,23 +1,34 @@
-# CPU and memory
+# CPU, memory and GPU
 
-A slim status bar showing this computer's CPU load and memory use, updated every 2 seconds:
-`CPU 69%  MEM 25.1/31.3 GiB (80%)`.
+A slim status bar with the load of the machine you're looking at: CPU with a one-minute sparkline,
+memory, and on AMD cards GPU load and VRAM, updated every 2 seconds:
+`CPU 23% ▂▃▅▂▁  MEM 25.1/31.3G  GPU 12% 1.9/8.0G`. Click it for `btop`.
 
-![CPU and memory](preview.png)
+![CPU, memory and GPU](preview.png)
 
 **What you see:** a 28px bar, theme `chrome` background with a 1px `border` line on top, 14px side
-padding, 11.8px text in `muted`. Before the first reading it shows `CPU —  MEM —`; if the numbers can't
-be read, `CPU / MEM unavailable`.
+padding, 11.8px text: labels (`CPU`, `MEM`, `GPU`) in `dim`, values in `muted`. After the CPU value, a
+sparkline of the last 30 readings: 2px bars, 1px apart, up to 14px tall, `accent`, `blocked` from 90%.
+For a space on another machine the machine's name comes first, in `accent`. Before the first reading
+values show `—`; if `/proc` can't be read, `CPU / MEM unavailable`. The GPU part shows only when an
+amdgpu card is found. The bar highlights on hover; the tooltip names the machine and the memory share.
 
-**How it behaves:** reads `/proc/stat` and `/proc/meminfo` every 2000ms. CPU is the busy share since the
-last reading (so the first reading shows `—`); memory is `MemTotal − MemAvailable`. It redraws only
-when the text changes. No clicks.
+**How it behaves:** every 2000ms it reads `/proc/stat` and `/proc/meminfo` of the active space's machine
+(`readTextFile(path, { on: space.machine })`, so a remote space's numbers come through herdr-core),
+and on the first reading looks for `/sys/class/drm/card0..3/device/gpu_busy_percent`, then reads it with
+`mem_info_vram_used` and `mem_info_vram_total`. CPU is the busy share (all but idle and iowait) since the
+last reading; memory is `MemTotal − MemAvailable`. Switching to a space on another machine starts the
+sparkline over. Click: `command -v btop || command -v htop || echo top` on that machine, then
+`run("tab.new", { space, name: "monitor", argv: [that] })`.
 
-**Built from:** one `View` (`h_flex`), `readTextFile` and `theme()` from `herdr`, `cx.timer.every`.
-`mod.json` docks it at the bottom (`"place": "bottom", "size": 28`); the repo's `main-plus` layout puts
-it at the right of the status row instead.
+**Built from:** one `View` (`h_flex`); `readTextFile`, `exec`, `run`, `spaces` and `theme()` from
+`herdr`; `cx.timer.every`, `cx.spawn`. The parsing is in `logic.mjs` (pure, tested by
+`test_logic.mjs`). `mod.json` docks it at the bottom (`"place": "bottom", "size": 28`); the repo's
+`main-plus` layout puts it at the right of the status row, 420px wide.
 
-**Watch out:** Linux only (`/proc`). It shows the machine the app runs on, not a remote space's machine.
+**Watch out:** `/proc` and amdgpu sysfs are Linux-only; on macOS the bar says `CPU / MEM unavailable`.
+NVIDIA and Intel GPUs aren't shown. Reads for a machine that is away fail quietly and show `—`.
 
-**Done when:** `herdr-app check mods/sysstat` passes and the bar shows a CPU percentage within 4 seconds
-that rises under load (`yes > /dev/null`).
+**Done when:** `herdr-app check mods/sysstat` passes, `node mods/sysstat/test_logic.mjs` prints `ok`,
+and the bar shows a CPU percentage within 4 seconds whose sparkline rises under load
+(`yes > /dev/null`).

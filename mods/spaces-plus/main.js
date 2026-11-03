@@ -1,7 +1,9 @@
 // spaces-plus: a copy of Herdr's shipped `spaces` mod. Adds: a second line (folder, tab count,
 // git with changed-file count), the space's agent status, the active space's tabs (settled ones
 // folded), space counts and state on machine rows, and recent spaces to reopen under an empty machine.
-// An unnamed "~" space shows its agent's name. Merge `spaces` updates via the repo's upstream branch.
+// An unnamed "~" space shows its agent's name. Also: the ports a space's programs listen on (click:
+// open in the browser), the pull request of its branch (gh; click: open it), CPU and memory on
+// machine rows. Its own helpers live in extras.mjs. Merge `spaces` updates via the repo's upstream branch.
 // Workspace spaces: stable colored avatars, worktrees under their checkout,
 // grouped by machine when more than one is known. After a space's name, the repo
 // its first terminal is in now, only where unusual: branch, ahead/behind. Agent state lives in the agents list, not here. Click to
@@ -10,6 +12,7 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, readTextFile, appHome } from "herdr";
+import { PORTS_SCRIPT, assignPorts, changedCount, cpuPercent, cpuTimes, duration, memPercent, parseListeners, portUrl, prsByBranch, spaceName, tabLabel, tilde } from "./extras.mjs";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -30,37 +33,6 @@ function place(s, ps) {
   return ps.find((p) => tabs.has(p.tab) && p.cwd)?.cwd || s.folder;
 }
 const rowHeight = ({ tree }, two) => (two ? 40 : tree ? 28 : 30);
-const tilde = (path) => (path || "~").replace(/^\/home\/[^/]+|^\/Users\/[^/]+/, "~");
-const clean = (s) => (s ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
-
-function duration(ms) {
-  const m = Math.floor(ms / 60000);
-  if (m < 1) return "<1m";
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
-}
-
-// A tab's label: its name, or the title its lead program set (as the agents mod does).
-export function tabLabel(tab, ps) {
-  const mine = ps.filter((p) => p.tab === tab.id && p.terminal);
-  const l = mine.find((p) => p.program?.agent) ?? mine.find((p) => p.focused) ?? mine[0];
-  const live = clean(l?.title);
-  const telling = live && live !== l?.program?.name && !/^[~/]/.test(live) && !live.includes("@");
-  return tab.named || !telling ? tab.name : `${tab.index} \u00b7 ${live}`;
-}
-
-// What a space is called: its name, or for an unnamed home space ("~") the agent in it.
-export function spaceName(w, ps) {
-  if (w.named || w.name !== "~") return w.name;
-  const tabs = new Set(w.tabs.map((t) => t.id));
-  return ps.find((p) => tabs.has(p.tab) && p.program?.agent)?.program?.name?.toLowerCase() || w.name;
-}
-
-// Changed files in `git status --porcelain=v2` output: tracked changes, conflicts and untracked.
-export function changedCount(out) {
-  return out.split("\n").filter((l) => /^[12u?] /.test(l)).length;
-}
 const where = (s, ps) => JSON.stringify([s.machine ?? null, place(s, ps)]);
 const base = (path) => path.replace(/\/+$/, "").split("/").pop();
 // Changes made outside Herdr (an editor's save, a commit in another app): looked
@@ -102,7 +74,13 @@ export default class Spaces extends View {
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
     this.recent = [];
     this.showSettled = false;
+    this.ports = new Map(); // JSON [machine, folder] -> [{ host, port, name }]
+    this.prs = {}; // repo -> { at, branches: Map branch -> { number, state, draft, url } }
+    this.load = {}; // machine ("" here) -> { prev, cpu, mem }
     this.refreshMachines(cx);
+    this.refreshPorts(cx);
+    cx.timer.every(10000, (cx) => this.refreshPorts(cx));
+    cx.timer.every(4000, (cx) => this.refreshLoad(cx));
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     cx.timer.every(30000, (cx) => cx.notify()); // working-since times
     // `git status` walks the whole tree, on another machine a process there:
@@ -166,6 +144,115 @@ export default class Spaces extends View {
       try { this.recent = JSON.parse(await readTextFile(`${appHome()}/view.json`) ?? "{}").recent ?? []; } catch {}
       cx.notify();
     });
+  }
+
+  // Listening ports per space folder, one look per machine with spaces; once a minute while the
+  // window is in the background.
+  refreshPorts(cx) {
+    if (this.portsBusy || (!window()?.active && Date.now() - (this.portsAt ?? 0) < 60000)) return;
+    this.portsBusy = true;
+    this.portsAt = Date.now();
+    const sp = spaces(), ps = panes();
+    const byMachine = new Map();
+    for (const s of sp) {
+      const m = s.machine ?? null;
+      byMachine.set(m, [...(byMachine.get(m) ?? []), place(s, ps)]);
+    }
+    cx.spawn(async (cx) => {
+      const next = new Map();
+      for (const [on, folders] of byMachine) {
+        try {
+          const r = await exec("sh", ["-c", PORTS_SCRIPT], { on });
+          for (const [f, list] of assignPorts(parseListeners(r.stdout), folders)) next.set(JSON.stringify([on, f]), list);
+        } catch {} // the machine is away: no ports shown for it
+      }
+      this.ports = next;
+      await this.refreshPrs(sp, ps);
+      this.portsBusy = false;
+      cx.notify();
+    });
+  }
+
+  // Each shown repo's pull requests by branch, from `gh` on its machine, at most every 5 minutes.
+  // Only repos with a space on a branch other than main/master; no gh or no login: none shown.
+  async refreshPrs(sp, ps) {
+    const now = Date.now();
+    const seen = new Set();
+    for (const s of sp) {
+      const g = this.git[where(s, ps)];
+      if (!g?.branch || ["main", "master"].includes(g.branch) || seen.has(g.repo)) continue;
+      seen.add(g.repo);
+      if (now - (this.prs[g.repo]?.at ?? 0) < 300000) continue;
+      this.prs[g.repo] = { at: now, branches: this.prs[g.repo]?.branches ?? new Map() };
+      try {
+        const r = await exec("gh", ["pr", "list", "--state", "all", "--limit", "100", "--json", "number,headRefName,state,isDraft,url"], { cwd: place(s, ps), on: s.machine ?? null });
+        if (r.code === 0) this.prs[g.repo].branches = prsByBranch(r.stdout);
+      } catch {}
+    }
+  }
+
+  pr(g) {
+    return g?.branch && !["main", "master"].includes(g.branch) ? this.prs[g.repo]?.branches.get(g.branch) ?? null : null;
+  }
+
+  // CPU and memory of each machine with a header row (this computer too), from its /proc; every
+  // 30 s while the window is in the background.
+  refreshLoad(cx) {
+    if (this.loadBusy || !this.machines.length || (!window()?.active && Date.now() - (this.loadAt ?? 0) < 30000)) return;
+    this.loadBusy = true;
+    this.loadAt = Date.now();
+    const names = ["", ...this.machines.filter((m) => m.state === "connected").map((m) => m.name)];
+    cx.spawn(async (cx) => {
+      for (const m of names) {
+        const on = m || null;
+        const [stat, mem] = await Promise.all([readTextFile("/proc/stat", { on }).catch(() => null), readTextFile("/proc/meminfo", { on }).catch(() => null)]);
+        const now = cpuTimes(stat);
+        const old = this.load[m];
+        this.load[m] = now ? { prev: now, cpu: cpuPercent(old?.prev, now) ?? old?.cpu ?? null, mem: memPercent(mem) } : null;
+      }
+      this.loadBusy = false;
+      cx.notify();
+    });
+  }
+
+  // A port or a pull request, in this computer's browser (xdg-open on Linux, open on macOS).
+  async open(url) {
+    for (const cmd of ["xdg-open", "open"]) {
+      try { if ((await exec(cmd, [url])).code === 0) return; } catch {}
+    }
+  }
+
+  // A machine row's CPU and memory in use; red from 90%.
+  loadChip(l, t, m) {
+    const pct = (v) => (v === null ? "\u2014" : `${v}%`);
+    const hot = (v) => (v ?? 0) >= 90;
+    // No separator between the two: a narrow sidebar needs the room for the machine's name.
+    return h_flex().id(`load-${m ?? "local"}`).flex_none().gap(5).text_size(10.5)
+      .tooltip(`${m ?? "This computer"}: CPU ${pct(l.cpu)}, memory ${pct(l.mem)} in use`)
+      .when(l.cpu !== null, (el) => el.child(div().text_color(hot(l.cpu) ? t.blocked : t.muted).child(pct(l.cpu))))
+      .child(div().text_color(hot(l.mem) ? t.blocked : t.dim).child(pct(l.mem)));
+  }
+
+  // The space's ports and its branch's pull request, as small clickable chips.
+  chips(w, g, t, ps) {
+    const out = [];
+    const pr = this.pr(g);
+    if (pr) {
+      const color = pr.state === "MERGED" ? t.ansi5 : pr.draft ? t.dim : t.ansi2;
+      const word = pr.state === "MERGED" ? "merged" : pr.draft ? "draft" : "open";
+      out.push(div().id(`pr-${w.id}`).flex_none().text_color(color).hover((s) => s.text_color(t.foreground))
+        .tooltip(`Pull request #${pr.number} (${word})\n${pr.url}\nclick: open`)
+        .on_click((_e, cx) => { cx.stop_propagation(); this.open(pr.url); })
+        .child(`#${pr.number}`));
+    }
+    for (const p of this.ports.get(JSON.stringify([w.machine ?? null, place(w, ps)])) ?? []) {
+      const url = portUrl(p, w.machine ?? null);
+      out.push(div().id(`port-${w.id}-${p.port}`).flex_none().text_color(t.accent).hover((s) => s.text_color(t.foreground))
+        .tooltip(`${p.name} listens on ${p.host}:${p.port}\nclick: open ${url}`)
+        .on_click((_e, cx) => { cx.stop_propagation(); this.open(url); })
+        .child(`:${p.port}`));
+    }
+    return out;
   }
 
   rebuilt(machine) {
@@ -343,7 +430,8 @@ export default class Spaces extends View {
         .when(!collapsed, el => el.child(div().flex_shrink(1).min_w(0).truncate().child(m ?? "This computer"))
           .when(mine.length > 0, el => el.child(div().flex_none().child(String(mine.length))))
           .child(div().flex_1())
-          .when(Boolean(m) && connected, el => el.child(div().flex_none().text_size(10.5).text_color(t.ansi2).child("connected")))
+          .when(connected && Boolean(this.load[m ?? ""]), el => el.child(this.loadChip(this.load[m ?? ""], t, m)))
+          .when(Boolean(m) && connected && !this.load[m], el => el.child(div().flex_none().text_size(10.5).text_color(t.ansi2).child("connected")))
           .when(!connected && !rebuilt, el => el.child(div().flex_none().child((machine?.state ?? "asleep").replace(/_/g, " "))))
           .when(rebuilt, el => el.child(h_flex().flex_none().gap(3).items_center()
             .child(div().max_w(140).truncate().child(repair?.error || "rebuilt ·"))
@@ -376,7 +464,7 @@ export default class Spaces extends View {
   // Only what's unusual, after the name: "herdr \u00b7 spike \u21912 \u21931". The repo or
   // branch goes when the name already says it (a worktree is named after its branch),
   // and master/main go: nearly every space is on one.
-  gitTail(g, tree, name, t) {
+  gitTail(g, tree, name, t, chips = []) {
     const raw = g.branch ?? "detached";
     const same = (a) => a.toLowerCase() === name.toLowerCase();
     const branch = same(raw) || raw === "master" || raw === "main" ? "" : raw;
@@ -392,7 +480,8 @@ export default class Spaces extends View {
       .text_color(t.dim)
       .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)))
       .when(g.ahead > 0, (el) => el.child(div().flex_none().text_color(t.ansi2).child(`\u2191${g.ahead}`)))
-      .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)));
+      .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)))
+      .children(chips);
   }
 
   // The space's most urgent agent: Needs you, a spinner, or a dot for done; idle says nothing.
@@ -418,6 +507,7 @@ export default class Spaces extends View {
       if (g.changed > 0) parts.push(div().flex_none().child(`${g.changed} changed`));
     } else if (tabs > 1) parts.push(div().min_w(0).truncate().child(tilde(place(w, ps))));
     if (tabs > 1) parts.push(div().flex_none().child(`${tabs} tabs`));
+    parts.push(...this.chips(w, g, t, ps));
     if (!parts.length) return null;
     return h_flex().min_w(0).gap(5).items_center().text_size(11).text_color(t.dim)
       .children(parts.flatMap((p, n) => (n ? [div().flex_none().child("\u00b7"), p] : [p])));
@@ -504,7 +594,7 @@ export default class Spaces extends View {
           .child(v_flex().flex_1().min_w(0).gap(1)
             .child(h_flex().min_w(0).gap(5).items_center()
               .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(name))
-              .child(tree && g ? this.gitTail(g, tree, name, t) : div().flex_1()))
+              .child(tree && g ? this.gitTail(g, tree, name, t, this.chips(w, g, t, ps)) : div().flex_1()))
             .when(Boolean(second), (el) => el.child(second)))
           .when(Boolean(this.status(t, w.status)), (el) => el.child(this.status(t, w.status))),
       );

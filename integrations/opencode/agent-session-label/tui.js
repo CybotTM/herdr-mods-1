@@ -12,7 +12,7 @@ function watch(currentRoot) {
     try { id = currentRoot(); } catch { return; }
     if (typeof id !== "string" || !id || id === last) return;
     last = id;
-    execFile("agent-session-label", [id], { timeout: 4000 }, () => {}); // fire and forget
+    execFile("agent-session-label", [id, "-", "opencode"], { timeout: 4000 }, () => {}); // fire and forget
   }, 1000);
   poll.unref?.();
   return () => clearInterval(poll);

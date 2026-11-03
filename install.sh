@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install herdr-mods on this machine: copy the mods into herdr-app, and (unless --mods-only) link the
-# agent-session-label script and the hooks that make each coding agent report its session id.
+# agent-session-label script and the hooks that make each coding agent (Claude Code, Codex, Pi, PiG,
+# OpenCode, Hermes) report its session id.
 # Re-running is safe: mods are updated in place, hooks are added once, and anything else in the way
 # is moved to ~/.cache/herdr-mods/backup-<time>/, never deleted.
 #
@@ -133,5 +134,17 @@ if "./agent-session-label" not in plugins:
     os.replace(tmp, path)
     print(f"  added ./agent-session-label to {path}")
 PY
+fi
+HERMES="${HERMES_HOME:-$HOME/.hermes}"
+if [ -d "$HERMES/plugins" ]; then
+  echo "Hermes plugin"
+  # Skip when another plugin already writes the label (two writers would race on resumed sessions).
+  other="$(grep -lsF 'agent.session=' "$HERMES"/plugins/*/__init__.py | grep -v '/agent-session-label/' || true)"
+  if [ -n "$other" ]; then
+    echo "  skipped: $other already sets agent.session"
+  else
+    link "$REPO/integrations/hermes/agent-session-label" "$HERMES/plugins/agent-session-label"
+    echo "  enable it once: hermes plugins enable agent-session-label"
+  fi
 fi
 echo "Done. Restart running agents so they pick up the hooks."

@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+# Screenshots for README.md and the mods' preview.png, from a second herdr-app with its own
+# herdr-core: demo repos and agents only, none of your own spaces or terminals (which a demo window
+# on the shared core would show, and could close).
+#
+#   scripts/demo.sh start   make the demo repos, start the demo window, open spaces and agents
+#   scripts/demo.sh shot    save the window to $DEMO/shot.png and crop the previews into the repo
+#   scripts/demo.sh stop    close the demo window and stop its herdr-core
+#
+# DEMO (default ~/.cache/herdr-mods-demo) holds everything. The PR badge comes from a stub `gh`
+# in $DEMO/bin (the demo repos have no GitHub remote); ports, git and session ids are real.
+# Agents: Claude Code and Pi when installed (Claude asks once to trust each demo folder).
+# Needs herdr-app, hc, git, python3; Pillow for the crops.
+set -euo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DEMO="${DEMO:-$HOME/.cache/herdr-mods-demo}"
+REAL_RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+# The demo moves XDG_RUNTIME_DIR, so the display sockets are named by full path. Without
+# WAYLAND_DISPLAY (a shell outside the desktop session), the first compositor socket there.
+WAYLAND="${WAYLAND_DISPLAY:-$(find "$REAL_RUNTIME" -maxdepth 1 -type s -name 'wayland-*' -printf '%f\n' 2>/dev/null | sort | head -1)}"
+case "$WAYLAND" in /*) ;; *) WAYLAND="$REAL_RUNTIME/${WAYLAND:-wayland-0}" ;; esac
+
+# Crops of the maximized window's shot, as x0 y0 x1 y1 (pixels). Measured on a 3440x1440 screen
+# (a 3440x1406 shot) at one zoom step; `shot` prints the shot's size, so adjust these when yours differs.
+# The mouse pointer counts: resting on the window, it hovers a row or opens a tooltip in the shot.
+CROP_SPACES="${CROP_SPACES:-0 56 296 290}"
+CROP_AGENTS="${CROP_AGENTS:-0 690 296 950}"
+CROP_SYSSTAT="${CROP_SYSSTAT:-2930 1370 3350 1406}"
+
+demo_env() {
+  export HERDR_APP_HOME="$DEMO/home" XDG_RUNTIME_DIR="$DEMO/run" XDG_STATE_HOME="$DEMO/state" XDG_DATA_HOME="$DEMO/share"
+  export WAYLAND_DISPLAY="$WAYLAND" DISPLAY="${DISPLAY:-:0}" PATH="$DEMO/bin:$PATH"
+  export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$REAL_RUNTIME/bus}"
+  unset HC_TERMINAL_ID HC_TERMINAL_SOCKET
+}
+
+do_() { herdr-app "do" "$@" >/dev/null; }
+have() { command -v "$1" >/dev/null; }
+
+# repo <dir> <commit message>...: a git repo with one commit per message, made once.
+repo() {
+  local dir="$1"; shift
+  [ -d "$dir/.git" ] && return
+  mkdir -p "$dir/src"
+  git -C "$dir" init -q -b main
+  local n=0 msg
+  for msg in "$@"; do
+    n=$((n + 1))
+    echo "// $msg" >"$dir/src/part$n.js"
+    git -C "$dir" add -A
+    git -C "$dir" -c user.name=demo -c user.email=demo@example.com commit -qm "$msg"
+  done
+}
+
+make_repos() {
+  local w="$DEMO/work"
+  repo "$w/acme-api" "init" "routes" "auth"
+  if [ ! -d "$w/acme-api/.worktrees/search" ]; then
+    git -C "$w/acme-api" worktree add -q -b feature/search "$w/acme-api/.worktrees/search"
+    echo "// search" >"$w/acme-api/.worktrees/search/src/search.js"
+  fi
+  repo "$w/web-dashboard" "init" "charts"
+  echo "// wip" >>"$w/web-dashboard/src/part1.js"; touch "$w/web-dashboard/src/new.js" "$w/web-dashboard/TODO.md"
+  if [ ! -d "$DEMO/remote/docs-site.git" ]; then
+    repo "$w/docs-site" "init"
+    git init -q --bare "$DEMO/remote/docs-site.git"
+    git -C "$w/docs-site" remote add origin "$DEMO/remote/docs-site.git"
+    git -C "$w/docs-site" push -q -u origin main
+    for m in "guide" "faq"; do echo "$m" >"$w/docs-site/$m.md"; git -C "$w/docs-site" add -A; git -C "$w/docs-site" -c user.name=demo -c user.email=demo@example.com commit -qm "$m"; done
+  fi
+  mkdir -p "$DEMO/bin"
+  cat >"$DEMO/bin/gh" <<'GH'
+#!/bin/sh
+# Demo stub (scripts/demo.sh): one open pull request from feature/search.
+[ "$1 $2" = "pr list" ] || exit 1
+echo '[{"number":42,"headRefName":"feature/search","state":"OPEN","isDraft":false,"url":"https://github.com/acme/acme-api/pull/42"}]'
+GH
+  chmod +x "$DEMO/bin/gh"
+}
+
+# space <name> <folder> [argv json]: a space whose first terminal runs argv (a shell by default).
+space() {
+  do_ space.new "{\"name\":\"$1\",\"folder\":\"$2\"${3:+,\"argv\":$3}}"
+}
+
+# trust <folder>: answer Claude Code's "trust this folder?" for the demo terminal there.
+trust() {
+  local t
+  for _ in $(seq 20); do
+    t="$(hc ls --json | python3 -c 'import json,sys; print(next((t["address"] for t in json.load(sys.stdin)["terminals"] if t["cwd"] == sys.argv[1]), ""))' "$1")"
+    if [ -n "$t" ] && hc read "$t" 2>/dev/null | grep -q "trust this folder"; then hc keys "$t" down enter >/dev/null; return; fi
+    sleep 0.5
+  done
+}
+
+start() {
+  mkdir -p "$DEMO"/{home,state,share,remote,run} && chmod 700 "$DEMO/run"
+  make_repos
+  demo_env
+  if ! herdr-app status >/dev/null 2>&1; then
+    setsid herdr-app >"$DEMO/app.log" 2>&1 </dev/null &
+    for _ in $(seq 40); do herdr-app status >/dev/null 2>&1 && break; sleep 0.5; done
+    herdr-app status >/dev/null 2>&1 || { echo "The demo window didn't start; see $DEMO/app.log" >&2; exit 1; }
+  fi
+  HERDR_APP_CONFIG="$HERDR_APP_HOME" "$REPO/install.sh" --mods-only >/dev/null
+  cp "$REPO/layouts/main-plus.json" "$HERDR_APP_HOME/layouts/main-plus.json"
+  do_ layout.switch '{"name":"main-plus"}'
+  do_ window.maximize
+  do_ app.zoom_in
+  local w="$DEMO/work"
+  if herdr-app ls | grep -q '"acme-api"'; then
+    echo "Demo spaces already open."
+  else
+    space acme-api "$w/acme-api" "$(have pi && echo '["pi"]')"
+    space search "$w/acme-api/.worktrees/search" "$(have claude && echo '["claude"]')"
+    have claude && trust "$w/acme-api/.worktrees/search"
+    space web-dashboard "$w/web-dashboard" '["python3","-m","http.server","5173","--bind","127.0.0.1"]'
+    space docs-site "$w/docs-site" "$(have pi && echo '["pi"]')"
+  fi
+  echo "Demo window up. For Recent sessions, quit one agent (docs-site's Pi: Ctrl+C twice, then Ctrl+D),"
+  echo "wait ~10 s for ports and the PR badge, then: scripts/demo.sh shot"
+}
+
+shot() {
+  demo_env
+  herdr-app shot "$DEMO/shot.png" >/dev/null
+  python3 - "$DEMO/shot.png" "$REPO" "$CROP_SPACES" "$CROP_AGENTS" "$CROP_SYSSTAT" <<'PY'
+import sys
+from PIL import Image
+shot, repo, *crops = sys.argv[1:]
+im = Image.open(shot)
+print(f"shot {im.size[0]}x{im.size[1]}: {shot}")
+im.save(f"{repo}/preview.png")
+for mod, box in zip(["spaces-plus", "agents-ids", "sysstat"], crops):
+    im.crop(tuple(int(v) for v in box.split())).save(f"{repo}/mods/{mod}/preview.png")
+    print(f"  mods/{mod}/preview.png <- {box}")
+PY
+}
+
+stop() {
+  demo_env
+  herdr-app "do" window.close >/dev/null 2>&1 || true
+  hc server stop >/dev/null 2>&1 || true
+  echo "Demo stopped ($DEMO kept; delete it when done)."
+}
+
+case "${1:-}" in
+  start) start ;;
+  shot) shot ;;
+  stop) stop ;;
+  *) sed -n 2,13p "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
