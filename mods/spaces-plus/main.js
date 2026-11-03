@@ -1,3 +1,7 @@
+// spaces-plus: a copy of Herdr's shipped `spaces` mod. Adds: a second line (folder, tab count,
+// git with changed-file count), the space's agent status, the active space's tabs (settled ones
+// folded), space counts and state on machine rows, and recent spaces to reopen under an empty machine.
+// An unnamed "~" space shows its agent's name. Merge `spaces` updates via the repo's upstream branch.
 // Workspace spaces: stable colored avatars, worktrees under their checkout,
 // grouped by machine when more than one is known. After a space's name, the repo
 // its first terminal is in now, only where unusual: branch, ahead/behind. Agent state lives in the agents list, not here. Click to
@@ -5,7 +9,7 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout } from "herdr";
+import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, readTextFile, appHome } from "herdr";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -25,7 +29,38 @@ function place(s, ps) {
   const tabs = new Set((s.tabs ?? []).map((c) => c.id));
   return ps.find((p) => tabs.has(p.tab) && p.cwd)?.cwd || s.folder;
 }
-const rowHeight = ({ tree }) => (tree ? 28 : 30);
+const rowHeight = ({ tree }, two) => (two ? 40 : tree ? 28 : 30);
+const tilde = (path) => (path || "~").replace(/^\/home\/[^/]+|^\/Users\/[^/]+/, "~");
+const clean = (s) => (s ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
+
+function duration(ms) {
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return "<1m";
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
+}
+
+// A tab's label: its name, or the title its lead program set (as the agents mod does).
+export function tabLabel(tab, ps) {
+  const mine = ps.filter((p) => p.tab === tab.id && p.terminal);
+  const l = mine.find((p) => p.program?.agent) ?? mine.find((p) => p.focused) ?? mine[0];
+  const live = clean(l?.title);
+  const telling = live && live !== l?.program?.name && !/^[~/]/.test(live) && !live.includes("@");
+  return tab.named || !telling ? tab.name : `${tab.index} \u00b7 ${live}`;
+}
+
+// What a space is called: its name, or for an unnamed home space ("~") the agent in it.
+export function spaceName(w, ps) {
+  if (w.named || w.name !== "~") return w.name;
+  const tabs = new Set(w.tabs.map((t) => t.id));
+  return ps.find((p) => tabs.has(p.tab) && p.program?.agent)?.program?.name?.toLowerCase() || w.name;
+}
+
+// Changed files in `git status --porcelain=v2` output: tracked changes, conflicts and untracked.
+export function changedCount(out) {
+  return out.split("\n").filter((l) => /^[12u?] /.test(l)).length;
+}
 const where = (s, ps) => JSON.stringify([s.machine ?? null, place(s, ps)]);
 const base = (path) => path.replace(/\/+$/, "").split("/").pop();
 // Changes made outside Herdr (an editor's save, a commit in another app): looked
@@ -65,8 +100,11 @@ export default class Spaces extends View {
     this.reconnecting = JSON.parse(localStorage.getItem("machines.reconnecting") ?? "{}");
     for (const state of Object.values(this.reconnecting)) state.busy = false;
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
+    this.recent = [];
+    this.showSettled = false;
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
+    cx.timer.every(30000, (cx) => cx.notify()); // working-since times
     // `git status` walks the whole tree, on another machine a process there:
     // only when its answer could have changed (see `due`).
     cx.timer.every(250, (cx) => this.checkNew(cx));
@@ -124,6 +162,8 @@ export default class Spaces extends View {
   refreshMachines(cx) {
     cx.spawn(async cx => {
       try { const r = await hc(["machine", "ls", "--json"]); if (r.code === 0) this.machines = (JSON.parse(r.stdout).machines ?? []).filter((m) => !m.temporary); } catch {}
+      // Closed spaces (`recent` in view.json: {name, folder, machine?}); no herdr function reads them.
+      try { this.recent = JSON.parse(await readTextFile(`${appHome()}/view.json`) ?? "{}").recent ?? []; } catch {}
       cx.notify();
     });
   }
@@ -213,7 +253,7 @@ export default class Spaces extends View {
       const common = await exec("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd, on });
       const repo = common.stdout.trim();
       const name = repo.endsWith("/.git") ? base(repo.slice(0, -5)) : base(repo).replace(/\.git$/, "");
-      const info = { name, branch: null, ahead: 0, behind: 0, repo: JSON.stringify([on, repo]), linked: repo !== `${top.stdout.trim()}/.git` };
+      const info = { name, branch: null, ahead: 0, behind: 0, changed: changedCount(r.stdout), repo: JSON.stringify([on, repo]), linked: repo !== `${top.stdout.trim()}/.git` };
       for (const line of r.stdout.split("\n")) {
         if (line.startsWith("# branch.head ")) info.branch = line.slice(14);
         else if (line.startsWith("# branch.ab ")) {
@@ -274,7 +314,8 @@ export default class Spaces extends View {
   // The rows, under a header per machine once one isn't this computer.
   grouped(t, collapsed) {
     const rows = this.ordered();
-    const draw = (r) => (collapsed ? this.compact(r, t) : this.row(r, t));
+    const ps = panes();
+    const draw = (r) => (collapsed ? [this.compact(r, t)] : [this.row(r, t, ps), ...(r.w.active ? this.tabRows(r.w, t, ps) : [])]);
     const remote = [...new Set([...rows.map(r => r.w.machine).filter(Boolean), ...this.machines.map(m => m.name), ...Object.keys(this.reconnecting)])].sort();
     const loading = m => {
       const layout = machines().find(k => k.name === m)?.layout;
@@ -282,7 +323,7 @@ export default class Spaces extends View {
         || spaces().some(s => (s.machine ?? null) === m && !this.shown.has(s.id));
     };
     const loadingRow = m => div().id(`machine-loading-${m ?? "local"}`).h(28).flex_none().px(8).text_size(12).text_color(t.dim).child(collapsed ? "…" : "Loading…");
-    if (!remote.length) return loading(null) && !rows.length ? [loadingRow(null)] : rows.map(draw);
+    if (!remote.length) return loading(null) && !rows.length ? [loadingRow(null)] : rows.flatMap(draw);
     const machineNames = [null, ...remote];
     return machineNames.flatMap((m) => {
       const mine = rows.filter((r) => (r.w.machine ?? null) === m);
@@ -299,7 +340,10 @@ export default class Spaces extends View {
           cx.notify();
         })
         .child(svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(13).flex_none())
-        .when(!collapsed, el => el.child(div().flex_1().truncate().child(m ?? "This computer"))
+        .when(!collapsed, el => el.child(div().flex_shrink(1).min_w(0).truncate().child(m ?? "This computer"))
+          .when(mine.length > 0, el => el.child(div().flex_none().child(String(mine.length))))
+          .child(div().flex_1())
+          .when(Boolean(m) && connected, el => el.child(div().flex_none().text_size(10.5).text_color(t.ansi2).child("connected")))
           .when(!connected && !rebuilt, el => el.child(div().flex_none().child((machine?.state ?? "asleep").replace(/_/g, " "))))
           .when(rebuilt, el => el.child(h_flex().flex_none().gap(3).items_center()
             .child(div().max_w(140).truncate().child(repair?.error || "rebuilt ·"))
@@ -317,7 +361,15 @@ export default class Spaces extends View {
         .on_click(() => run("space.new", { machine: m ?? "" }))
         .child(svg("mods/workspace-chrome/plus.svg").size(12)).when(!collapsed, el => el.child("New space there"));
       if (!collapsed && rebuilt) return [head];
-      return [head, ...(folded ? [] : mine.length ? mine.map(draw) : [loading(m) ? loadingRow(m) : empty])];
+      // An empty machine offers its recently closed spaces back, up to three.
+      const again = collapsed || !connected ? [] : this.recent.filter((r) => (r.machine ?? null) === m && r.folder).slice(0, 3).map((r, n) =>
+        h_flex().id(`recent-${m ?? "local"}-${n}`).h(24).flex_none().px(8).gap(7).items_center().rounded(7)
+          .text_size(11.5).text_color(t.muted).hover(s => s.bg(t.hover).text_color(t.foreground))
+          .tooltip(`Reopen ${r.name} in ${r.folder}`)
+          .on_click(() => run("space.new", { name: r.name, folder: r.folder, machine: m ?? "" }))
+          .child(svg("mods/workspace-chrome/clock.svg").size(12).flex_none().text_color(t.dim))
+          .child(div().min_w(0).truncate().child(`${r.name} \u00b7 ${tilde(r.folder)}`)));
+      return [head, ...(folded ? [] : mine.length ? mine.flatMap(draw) : [loading(m) ? loadingRow(m) : empty, ...again])];
     });
   }
 
@@ -343,8 +395,65 @@ export default class Spaces extends View {
       .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)));
   }
 
-  row({ w, i, g, tree }, t) {
+  // The space's most urgent agent: Needs you, a spinner, or a dot for done; idle says nothing.
+  status(t, s) {
+    if (s === "blocked") return div().flex_none().px(6).h(18).rounded(5).bg(t.blocked + "26").text_size(10.5).font_semibold().text_color(t.blocked).flex().items_center().child("Needs you");
+    if (s === "working") return svg("mods/workspace-chrome/spinner.svg").size(12).mx(1).flex_none().text_color(t.working).spin(900);
+    if (s === "done") return div().size(7).mx(3).flex_none().rounded(4).bg(t.done);
+    return null;
+  }
+
+  // Line two, only when it has something: git (repo/branch, ahead/behind, changed files) or
+  // the folder, then the tab count when there is more than one.
+  detail(w, g, name, t, ps) {
+    const tabs = w.tabs.filter((x) => !x.settled).length;
+    const parts = [];
+    if (g) {
+      const raw = g.branch ?? "detached";
+      const same = (a) => a.toLowerCase() === name.toLowerCase();
+      const where = [same(g.name) ? "" : g.name, same(raw) || raw === "master" || raw === "main" ? "" : raw].filter(Boolean).join(" \u00b7 ");
+      if (where) parts.push(div().min_w(0).truncate().child(where));
+      if (g.ahead > 0) parts.push(div().flex_none().text_color(t.ansi2).child(`\u2191${g.ahead}`));
+      if (g.behind > 0) parts.push(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`));
+      if (g.changed > 0) parts.push(div().flex_none().child(`${g.changed} changed`));
+    } else if (tabs > 1) parts.push(div().min_w(0).truncate().child(tilde(place(w, ps))));
+    if (tabs > 1) parts.push(div().flex_none().child(`${tabs} tabs`));
+    if (!parts.length) return null;
+    return h_flex().min_w(0).gap(5).items_center().text_size(11).text_color(t.dim)
+      .children(parts.flatMap((p, n) => (n ? [div().flex_none().child("\u00b7"), p] : [p])));
+  }
+
+  // The active space's tabs (2 or more, or any put away): name, status, how long it has been working.
+  tabRows(w, t, ps) {
+    const live = w.tabs.filter((x) => !x.settled);
+    const away = w.tabs.filter((x) => x.settled);
+    if (live.length < 2 && !away.length) return [];
+    const now = Date.now();
+    const tabRow = (x) => {
+      const word = x.status === "working" && x.working_since ? `working ${duration(now - x.working_since)}` : x.status === "blocked" ? "needs you" : x.status === "done" ? "done" : "";
+      return h_flex().id(`tab-${x.id}`).h(22).flex_none().pl(35).pr(8).gap(6).items_center().rounded(6).text_size(11.5)
+        .when(x.active && !x.settled, (el) => el.bg(t.raised))
+        .hover((s) => s.bg(t.hover))
+        .on_click(() => run("tab.select", { id: x.id }))
+        .child(div().flex_1().min_w(0).truncate().text_color(x.active ? t.foreground : t.muted).child(tabLabel(x, ps)))
+        .when(Boolean(word), (el) => el.child(div().flex_none().text_size(10.5).text_color(t[x.status] ?? t.dim).child(word)));
+    };
+    const rows = live.length > 1 ? live.map(tabRow) : [];
+    if (away.length) {
+      rows.push(h_flex().id(`settled-${w.id}`).h(22).flex_none().pl(35).pr(8).gap(5).items_center().rounded(6).text_size(11).text_color(t.dim)
+        .hover((s) => s.bg(t.hover).text_color(t.foreground))
+        .on_click((_e, cx) => { this.showSettled = !this.showSettled; cx.notify(); })
+        .child(svg(`mods/workspace-chrome/chevron-${this.showSettled ? "down" : "right"}.svg`).size(11).flex_none())
+        .child(`${away.length} ${away.length === 1 ? "tab" : "tabs"} put away`));
+      if (this.showSettled) rows.push(...away.map(tabRow));
+    }
+    return rows;
+  }
+
+  row({ w, i, g, tree }, t, ps) {
     const on = w.active;
+    const name = spaceName(w, ps);
+    const second = tree ? null : this.detail(w, g, name, t, ps);
     const colors = shared("space.colors") ?? {};
     const color = colors[w.id] ?? "ansi6";
     const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
@@ -352,7 +461,7 @@ export default class Spaces extends View {
       .relative()
       .id(`space-${w.id}`)
       .px(8)
-      .h(rowHeight({ tree }))
+      .h(rowHeight({ tree }, Boolean(second)))
       .flex_none()
       .justify_center()
       .rounded(8)
@@ -391,9 +500,13 @@ export default class Spaces extends View {
           .gap(9)
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
-          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
-          .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
-          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1()),
+          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...name][0]?.toUpperCase() ?? "?")))
+          .child(v_flex().flex_1().min_w(0).gap(1)
+            .child(h_flex().min_w(0).gap(5).items_center()
+              .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(name))
+              .child(tree && g ? this.gitTail(g, tree, name, t) : div().flex_1()))
+            .when(Boolean(second), (el) => el.child(second)))
+          .when(Boolean(this.status(t, w.status)), (el) => el.child(this.status(t, w.status))),
       );
   }
 

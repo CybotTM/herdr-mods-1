@@ -1,0 +1,73 @@
+#!/usr/bin/env -S python3 -I
+"""Label this herdr-app terminal with the coding agent's session id (agent.session), for the agents-ids mod.
+
+Usage: agent-session-label <session-id> [agent-pid]
+       agent-session-label < hook.json        (JSON on stdin with "session_id": Claude Code, Codex hooks)
+
+Labels only when the agent is (a direct child of) the terminal's foreground job leader, so an agent
+started by another agent (one agent running `claude -p`, a script running codex) never overwrites the
+visible agent's label. Does nothing outside herdr-app (no HC_TERMINAL_ID). Linux only (/proc).
+Never fails loudly: a hook must not break the agent.
+"""
+import json
+import os
+import subprocess
+import sys
+
+SHELLS = {"sh", "bash", "dash", "zsh", "fish", "env"}
+
+
+def stat(pid: int) -> tuple[str, int, int, int]:
+    """(comm, ppid, pgrp, tpgid) from /proc/<pid>/stat."""
+    raw = open(f"/proc/{pid}/stat").read()
+    comm = raw[raw.index("(") + 1:raw.rindex(")")]
+    f = raw[raw.rindex(")") + 2:].split()
+    return comm, int(f[1]), int(f[2]), int(f[5])
+
+
+def agent_pid(start: int) -> int:
+    """The nearest ancestor (or start itself) that isn't a shell: the agent that ran this hook."""
+    pid = start
+    while pid > 1:
+        comm, ppid, _, _ = stat(pid)
+        if comm not in SHELLS:
+            return pid
+        pid = ppid
+    return 0
+
+
+def foreground_leader(pid: int) -> bool:
+    _, _, pgrp, tpgid = stat(pid)
+    return pid == pgrp == tpgid
+
+
+def visible(pid: int) -> bool:
+    """The agent is the terminal's foreground job leader, or its direct child: Codex and OpenCode run
+    hooks/plugins in a child of the TUI process, PiG in a node child of its Go launcher. One level only,
+    so an agent another agent started through a shell (Hermes -> bash -> claude) stays unlabelled."""
+    return foreground_leader(pid) or foreground_leader(stat(pid)[1])
+
+
+def main(argv: list[str]) -> int:
+    term = os.environ.get("HC_TERMINAL_ID", "").strip()
+    if not term:
+        return 0
+    sid = argv[1] if len(argv) > 1 else ""
+    if not sid and not sys.stdin.isatty():
+        try:
+            sid = str(json.load(sys.stdin).get("session_id") or "")
+        except ValueError:
+            sid = ""
+    pid = int(argv[2]) if len(argv) > 2 else agent_pid(os.getppid())
+    if not sid or not pid or not visible(pid):
+        return 0
+    subprocess.run(["hc", "label", term, f"agent.session={sid}"], timeout=3,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv))
+    except Exception:
+        sys.exit(0)

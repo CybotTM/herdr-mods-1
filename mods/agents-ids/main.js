@@ -1,4 +1,8 @@
 // Agents in grouped or priority views; parents take their most urgent sub-agent's place.
+// agents-ids: a copy of Herdr's shipped `agents` mod, plus a second row line with the terminal
+// address and the agent's session id, read from the terminal label `agent.session` (set by
+// integrations/ in github.com/DarkoKuzmanovic/herdr-mods, or by any agent: `hc label $HC_TERMINAL_ID agent.session=<id>`).
+// Click the line: copy the session id; Shift-click: copy the address. Merge `agents` updates via the repo's upstream branch.
 // A viewed done agent stays in Done until left.
 
 import { View, div, image, svg } from "gpui-kit";
@@ -26,6 +30,13 @@ function toggleSidebar() {
   run("layout.resize", { id: "sidebar", px: narrow() ? (shared("sidebar.width") ?? 268) : window()?.platform === "macos" ? 76 : 44 });
 }
 
+// Short session id. Hermes drops "local-"; UUIDv7 ids (Pi, PiG, Codex) keep 13 chars, as their first 8
+// repeat for ~65 s; OpenCode's time-ordered "ses_…" ids show their last 8 (the random part).
+export const shortSid = (sid) => {
+  const s = (sid ?? "").replace(/^local-/, "");
+  if (/^ses_/.test(s)) return s.slice(-8);
+  return s.slice(0, /^[0-9a-f]{8}-[0-9a-f]{4}-7/i.test(s) ? 13 : 8);
+};
 const clean = (s) => (s ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
 
 function lead(tab, all = panes()) {
@@ -223,6 +234,7 @@ export default class Agents extends View {
     this.listed = new Map(list.map((a) => [a.address, a.status]));
     const all = terminals();
     this.migratePins(all);
+    this.sessions = new Map(all.map((k) => [k.address, k.labels?.["agent.session"]]));
     const shown = focused()?.agent;
     const now = Date.now();
     this.track(list, now);
@@ -326,10 +338,22 @@ export default class Agents extends View {
       // Without a space header above (priority, pinned) the row names its space.
       const full = byPriority || isPinned;
       const name = full ? a.space_name || label(a) : more ?? (/^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a));
+      const sid = this.sessions.get(a.address);
+      const ids = h_flex()
+        .id(`ids-${a.address}`)
+        .min_w(0)
+        .text_size(11)
+        .tooltip(sid ? `terminal ${a.address}\nsession ${sid}\nclick: copy session id \u00b7 shift-click: copy address` : `terminal ${a.address}`)
+        .on_click((e, cx) => {
+          cx.stop_propagation();
+          cx.write_to_clipboard(e?.modifiers?.shift || !sid ? a.address : sid);
+        })
+        .child(div().flex_none().text_color(t.accent).child(a.address))
+        .when(Boolean(sid), (el) => el.child(div().min_w(0).truncate().text_color(t.dim).child(` \u00b7 ${shortSid(sid)}`)));
       return h_flex()
         .id(`ag-${a.address}`)
         .px(8)
-        .h(30)
+        .h(44)
         .flex_none()
         .rounded(8)
         .items_center()
@@ -349,9 +373,11 @@ export default class Agents extends View {
             this.folded.has(a.address) ? this.folded.delete(a.address) : this.folded.add(a.address);
             cx.notify();
           })).child(pic)))
-        .child(h_flex().flex_1().min_w(0).gap(5).items_center()
-          .child(div().min_w(0).max_w(full && more ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(name))
-          .when(full && Boolean(more), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${more}`))))
+        .child(v_flex().flex_1().min_w(0).gap(1)
+          .child(h_flex().min_w(0).gap(5).items_center()
+            .child(div().min_w(0).max_w(full && more ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(name))
+            .when(full && Boolean(more), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${more}`))))
+          .child(ids))
         .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machine)))
         .when(subs.length > 0, el => el.child(fold(a, subs)))
         .when(this.hovered === a.address, el => el.child(pin))
@@ -424,7 +450,7 @@ export default class Agents extends View {
                 .text_size(11)
                 .text_color(t.dim)
                 .hover((s) => s.text_color(t.foreground))
-                .on_click(() => openOverlay({ mod: "agents", kind: "popup", width: 200, height: 140, props: { sortMenu: true } }))
+                .on_click(() => openOverlay({ mod: "agents-ids", kind: "popup", width: 200, height: 140, props: { sortMenu: true } }))
                 .tooltip(`Sort agents: ${sort.label}`)
                 .child(svg(`mods/workspace-chrome/${sort.icon}.svg`).size(14)),
             ),

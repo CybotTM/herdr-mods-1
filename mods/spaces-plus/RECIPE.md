@@ -1,0 +1,48 @@
+# Spaces Plus
+
+Herdr's Spaces list, telling you more without opening anything: what changed in each space's repo, how
+many tabs it has, which space has an agent working or waiting on you, and the active space's tabs right
+under it. Machines show how many spaces they hold, and an empty machine offers its recently closed
+spaces back.
+
+![Spaces Plus](preview.png)
+
+**What you see:** the shipped `spaces` mod (colored letter avatars, machines, worktrees under their
+checkout, drag to reorder), with:
+
+- **A second line** (11px, `dim`) when there is something to say: the repo name if it differs from the
+  space name, the branch unless it's `main`/`master`, `↑n` (`ansi2`) and `↓n` (`ansi1`) ahead/behind,
+  `n changed` (tracked changes, conflicts and untracked files), and `n tabs` when there are 2 or more.
+  Without git it shows the folder (`~/…`) when there are 2 or more tabs. Rows with a second line are
+  40px tall; others keep the shipped 30px.
+- **Status on the right**, the space's most urgent agent: a `Needs you` pill (10.5px semibold, theme
+  `blocked` color on a 15% tint of it) when blocked, the `workspace-chrome` spinner in `working` when
+  working, a 7px `done` dot when done, nothing when idle.
+- **The active space's tabs** under it (22px rows, indented 35px) when it has 2 or more: `1 · <title>`
+  and `working 12m` / `needs you` / `done` in that status' color. Settled tabs fold into
+  `› n tabs put away`; click to unfold.
+- **Machine rows** add the number of spaces and a green `connected` for a connected remote.
+- **Recent spaces** (up to 3, clock icon, `name · ~/folder`) under a machine with no spaces; click
+  reopens one with `space.new`.
+- An unnamed `~` space takes the name of the agent running in it (`pi`, `claude`).
+
+**How it behaves:** click a space to switch, a tab row to select that tab; right-click and drag as in
+`spaces`. Working times refresh every 30 s. Git is re-read when the space's folder changes.
+
+**Built from:** a copy of the shipped `spaces` mod (herdr-app 0.1.12). Uses `spaces()`, `machines()`,
+`panes()` (tab titles, agent names), `exec("git", ["status", "--porcelain=v2", "--branch"])`,
+`readTextFile(appHome() + "/view.json")` for `recent` (no herdr function returns it), `run("tab.select")`,
+`run("space.new")`, and icons from the shipped `workspace-chrome` mod (`spinner.svg`, `clock.svg`,
+`chevron-right.svg`, `chevron-down.svg`).
+
+**Watch out:**
+- `recent` entries may have no `machine` field; those are treated as this computer's.
+- Herdr keeps closed spaces in `recent` and has no command to drop one.
+- The git count runs `git status` per space; a huge repo makes the line appear a moment later.
+- The mod is a copy: when Herdr ships a new `spaces`, merge it (see the repo's README).
+
+**Done when:**
+- `herdr-app check mods/spaces-plus` passes and `node mods/spaces-plus/test_logic.mjs` prints `ok`.
+- A space in a repo with one edited file shows `1 changed`; a second tab makes `2 tabs` appear and lists
+  both tabs under the active space; `tab.settle` on one folds it into `1 tab put away`.
+- An agent waiting for approval shows `Needs you` on its space.
