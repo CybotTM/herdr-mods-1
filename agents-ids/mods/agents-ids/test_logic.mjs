@@ -1,6 +1,6 @@
 // Self-check for agents-ids: node mods/agents-ids/test_logic.mjs
 import assert from "node:assert/strict";
-import { recentSessions, rememberSessions, resumeArgv, shortSid } from "./extras.mjs";
+import { hideSession, recentSessions, rememberSessions, resumeArgv, shortSid } from "./extras.mjs";
 
 assert.equal(shortSid("local-e257df53a91b0666d3c2470352eebf013ed731f57b3b98d1f7314aea1783db1d"), "e257df53");
 assert.equal(shortSid("d00d75b6-815e-4fca-b4b0-637a75b0ffd9"), "d00d75b6");        // Claude Code (v4)
@@ -44,6 +44,12 @@ assert.equal(recentSessions(all, listed, store, 1).length, 1);
 // Resumed in a new terminal: the same id runs again, so it leaves the list.
 const resumed = [...all, { address: "t9", state: "live", agent: "pi", status: "working", labels: { "agent.app": "pi", "agent.session": "bbbb2222" } }];
 assert.ok(!recentSessions(resumed, listed, rememberSessions(store, resumed, listed, 200)).some((r) => r.sid === "bbbb2222"));
+// X hides one; the shell still carrying its label doesn't bring it back; running it again does.
+const hid = hideSession(store, "aaaa1111");
+assert.equal(hideSession(store, "nope"), store);
+assert.ok(!recentSessions(all, listed, rememberSessions(hid, all, listed, 200)).some((r) => r.sid === "aaaa1111"));
+const again = [{ ...all[0], agent: "claude", status: "working" }, ...all.slice(1)];
+assert.ok(!rememberSessions(hid, again, listed, 70000).aaaa1111.hidden);
 // Old ones age out; at most 20 are kept.
 assert.deepEqual(rememberSessions({ old1: { sid: "old1", app: "pi", address: "t0", seen: 0 } }, [], new Set(), 15 * 86400000), {});
 const many = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`ssss${i}xx`, { sid: `ssss${i}xx`, app: "pi", address: `t${i}`, seen: 1000 + i }]));

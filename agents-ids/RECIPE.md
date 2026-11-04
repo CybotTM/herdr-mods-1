@@ -1,7 +1,7 @@
 # Agents with IDs
 
 Herdr's Agents list, with a second line under every agent: the terminal's address (`t3`) and the
-agent's short session ID (`01a1a32c-c98e`). Click the line to copy the session ID; Shift-click to copy
+agent's short session ID (`01a1a32c-c98e`). Ctrl-click the line to copy the session ID; Shift-click to copy
 the address. Handy for `claude --resume`, `pi --session`, `codex resume`, `hc read t3` and for telling
 two agents in the same folder apart. Below the agents, **Recent sessions** lists the agent sessions that
 ended, each with a **Resume** button that reopens it.
@@ -18,22 +18,24 @@ except each row is 44px tall instead of 30px and has two lines:
 
 3. **Recent sessions**, a foldable group after the others (header like the others, `Recent sessions n`):
    28px rows of the program name (`muted`), `<folder> · <short id>` (`dim`) and a `Resume` pill (10.5px
-   semibold, `accent` text on a 12% tint of it). Up to 5, newest first.
+   semibold, `accent` text on a 12% tint of it), the age (`3h`, `dim`) and an X. Newest first; 5, then
+   a `Show n more` row lists all remembered ones. An X on the header hides them all.
 
 Short IDs: Hermes drops its `local-` prefix and shows 8 characters; UUIDv7 IDs (Pi, PiG, Codex) show 13
 (their first 8 repeat for about a minute); OpenCode `ses_…` IDs show their last 8 (the random part);
 anything else shows its first 8.
 
 **How it behaves:** statuses (working, blocked, done, idle) look and sort exactly as in `agents`.
-Hovering the second line shows the full address and session ID. Click copies the session ID (or the
-address when there is none); Shift-click copies the address. The click doesn't select the row.
+Hovering the second line shows the full address and session ID. Ctrl-click copies the session ID;
+Shift-click copies the address; neither selects the row. A plain click selects the row as usual.
 A session is *recent* when its terminal no longer runs it: the agent quit (the terminal is back at a
 shell or runs something else) or the terminal closed. The mod remembers each labelled session it sees
 (where, when) in `localStorage`, up to 20 for 14 days, so closed terminals and restarts don't lose
 them; one that runs again anywhere leaves the list. **Resume** at a bare shell types the command into
 that terminal; otherwise it opens a new tab in the session's space and folder with the command as its
 argv. Commands: `claude --resume`, `codex resume`, `pi --session`, `pig --session`, `opencode --session`,
-`hermes --resume`. Clicking the row copies the session ID.
+`hermes --resume`. Ctrl-clicking the row copies the session ID; the X beside Resume hides the session
+until it runs again.
 
 **Built from:** a copy of the shipped `agents` mod (herdr-app 0.1.12). Its own logic is in
 `extras.mjs` (pure: `shortSid`, `resumeArgv`, `rememberSessions`, `recentSessions`). In `main.js`: a map

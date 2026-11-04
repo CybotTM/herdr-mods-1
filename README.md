@@ -8,7 +8,7 @@ busy the machine is.
 
 | Mod | What it adds |
 |---|---|
-| [**agents-ids**](agents-ids/RECIPE.md) | A second line under every agent: terminal address and short session ID (click to copy). *Recent sessions* below, with **Resume** for agents that ended. Claude Code, Codex, Pi, PiG, OpenCode and Hermes, or any agent that sets one label. |
+| [**agents-ids**](agents-ids/RECIPE.md) | A second line under every agent: terminal address and short session ID (Ctrl-click to copy). *Recent sessions* below, with **Resume** for agents that ended. Claude Code, Codex, Pi, PiG, OpenCode and Hermes, or any agent that sets one label. |
 | [**spaces-plus**](spaces-plus/RECIPE.md) | Git changes, tab count and agent status per space, the active space's tabs, the ports its programs listen on and its branch's pull request (click to open), CPU and memory per machine, recent spaces to reopen. |
 | [**sysstat**](sysstat/RECIPE.md) | CPU with a one-minute sparkline, memory and AMD GPU in the status bar, for the machine of the space you're looking at. Click for `btop`. |
 

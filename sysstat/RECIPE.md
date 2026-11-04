@@ -7,7 +7,7 @@ memory, and on AMD cards GPU load and VRAM, updated every 2 seconds:
 ![CPU, memory and GPU](preview.png)
 
 **What you see:** a 28px bar, theme `chrome` background with a 1px `border` line on top, 14px side
-padding, 11.8px text: labels (`CPU`, `MEM`, `GPU`) in `dim`, values in `muted`. After the CPU value, a
+padding, 11.8px text: labels (`CPU`, `MEM`, `GPU`) in `dim`, values in `muted` (`blocked` from 90% busy or full). After the CPU value, a
 sparkline of the last 30 readings: 2px bars, 1px apart, up to 14px tall, `accent`, `blocked` from 90%.
 For a space on another machine the machine's name comes first, in `accent`. Before the first reading
 values show `—`; if `/proc` can't be read, `CPU / MEM unavailable`. The GPU part shows only when an

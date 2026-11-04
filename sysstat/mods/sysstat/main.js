@@ -66,7 +66,8 @@ export default class Sysstat extends View {
   render() {
     const t = theme();
     const label = (s) => div().flex_none().text_color(t.dim).child(s);
-    const value = (s) => div().flex_none().text_color(t.muted).child(s);
+    // Red at 90% or more, like the sparkline bars.
+    const value = (s, pct = 0) => div().flex_none().text_color(pct >= 90 ? t.blocked : t.muted).child(s);
     const spark = h_flex().flex_none().w(SAMPLES * 3).h(14).gap(1).items_end()
       .children(this.hist.map((v, i) => div().id(`s${i}`).w(2).h(Math.max(1, Math.round((v * 14) / 100))).bg(v >= 90 ? t.blocked : t.accent)));
     const g = this.gpu;
@@ -80,8 +81,8 @@ export default class Sysstat extends View {
       .when(Boolean(this.machine), (el) => el.child(div().flex_shrink(1).min_w(0).truncate().text_color(t.accent).child(this.machine)))
       .when(this.error, (el) => el.child(value("CPU / MEM unavailable")))
       .when(!this.error, (el) => el
-        .child(label("CPU")).child(value(this.cpu === null ? "—" : `${this.cpu}%`)).child(spark)
-        .child(label("MEM")).child(value(m ? `${gib(m.used)}/${gib(m.total)}G` : "—"))
-        .when(Boolean(g), (el) => el.child(label("GPU")).child(value(`${g.busy}%${g.used !== null && g.total ? ` ${gib(g.used)}/${gib(g.total)}G` : ""}`))));
+        .child(label("CPU")).child(value(this.cpu === null ? "—" : `${this.cpu}%`, this.cpu ?? 0)).child(spark)
+        .child(label("MEM")).child(value(m ? `${gib(m.used)}/${gib(m.total)}G` : "—", m ? (100 * m.used) / m.total : 0))
+        .when(Boolean(g), (el) => el.child(label("GPU")).child(value(`${g.busy}%${g.used !== null && g.total ? ` ${gib(g.used)}/${gib(g.total)}G` : ""}`, Math.max(g.busy, g.used !== null && g.total ? (100 * g.used) / g.total : 0)))));
   }
 }

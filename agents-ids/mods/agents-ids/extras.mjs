@@ -61,6 +61,11 @@ export function rememberSessions(store, all, agentAddresses, now) {
   return changed ? Object.fromEntries(keep.map((e) => [e.sid, e])) : store;
 }
 
+/** The store with `sid` hidden from Recent sessions. Kept, not deleted, so a shell that still
+ *  carries its label doesn't bring it back; running it again clears `hidden` (rememberSessions
+ *  rewrites the entry when `seen` moves). */
+export const hideSession = (store, sid) => (store[sid] ? { ...store, [sid]: { ...store[sid], hidden: true } } : store);
+
 /** Agent sessions that ended and can be resumed, newest first, at most `max`: remembered ones
  *  whose agent isn't running anywhere now. `atShell`: the terminal is open at a bare shell, so
  *  Resume can type the command there; otherwise it opens a new tab. */
@@ -68,7 +73,7 @@ export function recentSessions(all, agentAddresses, store, max = 5) {
   const byAddress = new Map(all.map((k) => [k.address, k]));
   const runningSids = new Set(all.filter((k) => running(k, agentAddresses)).map((k) => k.labels?.["agent.session"]).filter(Boolean));
   return Object.values(store)
-    .filter((e) => !runningSids.has(e.sid) && resumeArgv(e.app, e.sid))
+    .filter((e) => !e.hidden && !runningSids.has(e.sid) && resumeArgv(e.app, e.sid))
     .sort((a, b) => b.seen - a.seen)
     .slice(0, max)
     .map((e) => {

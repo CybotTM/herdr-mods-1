@@ -2,14 +2,14 @@
 // agents-ids: a copy of Herdr's shipped `agents` mod, plus a second row line with the terminal
 // address and the agent's session id, read from the terminal label `agent.session` (set by
 // integrations/ in github.com/DarkoKuzmanovic/herdr-mods, or by any agent: `hc label $HC_TERMINAL_ID agent.session=<id>`).
-// Click the line: copy the session id; Shift-click: copy the address. Below the agents, "Recent
+// Ctrl-click the line: copy the session id; Shift-click: copy the address. Below the agents, "Recent
 // sessions": agents that ended in a terminal, with Resume. Merge `agents` updates via the repo's upstream branch.
 // A viewed done agent stays in Done until left.
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, hc } from "herdr";
-import { recentSessions, rememberSessions, shortSid } from "./extras.mjs";
+import { hideSession, recentSessions, rememberSessions, shortSid } from "./extras.mjs";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -186,7 +186,7 @@ export default class Agents extends View {
 
   recentRow(t, r) {
     return h_flex()
-      .id(`recent-${r.address}`)
+      .id(`recent-${r.sid}`)
       .px(8)
       .h(28)
       .flex_none()
@@ -195,13 +195,13 @@ export default class Agents extends View {
       .items_center()
       .text_size(12)
       .hover((s) => s.bg(t.hover))
-      .tooltip(`${r.argv.join(" ")}\nin ${r.atShell ? `terminal ${r.address}` : `a new tab${r.cwd ? `, ${r.cwd}` : ""}`}\nsession ${r.sid}, last in ${r.address}\nclick: copy session id`)
-      .on_click((_e, cx) => cx.write_to_clipboard(r.sid))
+      .tooltip(`${r.argv.join(" ")}\nin ${r.atShell ? `terminal ${r.address}` : `a new tab${r.cwd ? `, ${r.cwd}` : ""}`}\nsession ${r.sid}, last in ${r.address}\nctrl-click: copy session id`)
+      .on_click((e, cx) => e?.modifiers?.control && cx.write_to_clipboard(r.sid))
       .child(div().flex_none().text_color(t.muted).child(r.app))
       // The folder says which work it was; a closed terminal's address may belong to another by now.
       .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`${r.cwd ? r.cwd.replace(/\/+$/, "").split("/").pop() : r.address} \u00b7 ${shortSid(r.sid)}`))
       .child(div()
-        .id(`resume-${r.address}`)
+        .id(`resume-${r.sid}`)
         .flex_none()
         .px(6)
         .h(18)
@@ -217,7 +217,35 @@ export default class Agents extends View {
           cx.stop_propagation();
           this.resume(r);
         })
-        .child("Resume"));
+        .child("Resume"))
+      .child(div().flex_none().text_size(11).text_color(t.dim).child(duration(Date.now() - r.seen)))
+      .child(this.xButton(t, `forget-${r.sid}`, "Remove from Recent sessions", (cx) => this.hide([r.sid], cx)));
+  }
+
+  // agents-ids: hide sessions from Recent sessions until they run again.
+  hide(sids, cx) {
+    this.remembered = sids.reduce(hideSession, this.remembered);
+    localStorage.setItem("sessions", JSON.stringify(this.remembered));
+    cx.notify();
+  }
+
+  xButton(t, id, tip, onClick) {
+    return div()
+      .id(id)
+      .flex_none()
+      .size(18)
+      .rounded(5)
+      .flex()
+      .items_center()
+      .justify_center()
+      .text_color(t.dim)
+      .hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .tooltip(tip)
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        onClick(cx);
+      })
+      .child(svg("mods/workspace-chrome/x.svg").size(11));
   }
 
   // Live sub-agents of `addr`, depth first, each with the tree lines in front of it.
@@ -387,10 +415,13 @@ export default class Agents extends View {
         .id(`ids-${a.address}`)
         .min_w(0)
         .text_size(11)
-        .tooltip(sid ? `terminal ${a.address}\nsession ${sid}\nclick: copy session id \u00b7 shift-click: copy address` : `terminal ${a.address}`)
+        .tooltip(sid ? `terminal ${a.address}\nsession ${sid}\nctrl-click: copy session id \u00b7 shift-click: copy address` : `terminal ${a.address}\nshift-click: copy address`)
         .on_click((e, cx) => {
+          // agents-ids: a plain click falls through to the row; only ctrl/shift copy.
+          const copy = e?.modifiers?.shift ? a.address : e?.modifiers?.control ? sid : null;
+          if (!copy) return;
           cx.stop_propagation();
-          cx.write_to_clipboard(e?.modifiers?.shift || !sid ? a.address : sid);
+          cx.write_to_clipboard(copy);
         })
         .child(div().flex_none().text_color(t.accent).child(a.address))
         .when(Boolean(sid), (el) => el.child(div().min_w(0).truncate().text_color(t.dim).child(` \u00b7 ${shortSid(sid)}`)));
@@ -462,6 +493,7 @@ export default class Agents extends View {
         .child(div().truncate().text_color(t[g.status] ?? t.dim).child(g.label))
         .when(byPriority || !open, (el) => el.child(div().text_color(t.dim).child(String(g.members.length))))
         .child(div().flex_1())
+        .when(Boolean(g.clear), (el) => el.child(this.xButton(t, `${g.id}-clear`, "Clear Recent sessions", g.clear)))
         .when(!open, (el) => el
           .when(!byPriority && top && top !== "idle", (el) => el.child(this.status(t, { status: top }, true)))
           .child(svg("mods/workspace-chrome/chevron-right.svg").size(11).flex_none().text_color(t.dim)));
@@ -471,8 +503,15 @@ export default class Agents extends View {
       : groups.flatMap((g) => [header(g), ...(this.folded.has(g.id) ? [] : g.members.flatMap(withKids))]);
     const store = rememberSessions(this.remembered, all, this.listed, now);
     if (store !== this.remembered) localStorage.setItem("sessions", JSON.stringify((this.remembered = store)));
-    const recent = collapsed ? [] : recentSessions(all, this.listed, store);
-    if (recent.length) rows.push(header({ id: "recent", label: "Recent sessions", status: null, members: recent }), ...(this.folded.has("recent") ? [] : recent.map((r) => this.recentRow(t, r))));
+    // agents-ids: 5 recent sessions, all remembered ones after "Show more".
+    const recent = collapsed ? [] : recentSessions(all, this.listed, store, Infinity);
+    const recentShown = this.recentAll ? recent : recent.slice(0, 5);
+    const toggle = () => h_flex().id("recent-more").px(8).h(24).flex_none().items_center().text_size(11).text_color(t.dim)
+      .cursor_pointer().hover((s) => s.text_color(t.foreground))
+      .on_click((_e, cx) => { this.recentAll = !this.recentAll; cx.notify(); })
+      .child(this.recentAll ? "Show less" : `Show ${recent.length - 5} more`);
+    if (recent.length) rows.push(header({ id: "recent", label: "Recent sessions", status: null, members: recent, clear: (cx) => this.hide(recent.map((r) => r.sid), cx) }),
+      ...(this.folded.has("recent") ? [] : [...recentShown.map((r) => this.recentRow(t, r)), ...(recent.length > 5 ? [toggle()] : [])]));
 
     return v_flex()
       .size_full()

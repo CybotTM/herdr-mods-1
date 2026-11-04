@@ -8,6 +8,19 @@ a version (see [AGENTS.md](AGENTS.md#releases)).
 
 ## [Unreleased]
 
+### Added
+
+- **agents-ids:** an X next to Resume removes a session from Recent sessions; it comes back only if
+  that session runs again; an X on the Recent sessions header clears the whole list.
+- **agents-ids:** Recent sessions show how long ago each one ran (`3h`, `2d`), and "Show n more"
+  lists every remembered session, not only the last 5.
+- **sysstat:** CPU, memory and GPU values turn red at 90% busy or full.
+
+### Changed
+
+- **agents-ids:** a plain click no longer copies anything; Ctrl-click copies the session ID (on the
+  ID line and in Recent sessions), Shift-click still copies the address.
+
 ## [0.2.1] - 2026-11-04
 
 ### Fixed
