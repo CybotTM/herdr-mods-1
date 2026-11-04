@@ -74,6 +74,8 @@ on herdr.dev (a layout package would need its own copies of the mods); it lives 
 - Agents started as the `argv` of `hc run` exit at once in tests; run `/usr/bin/zsh -i` and
   `hc send <t> <agent>` instead. `hc keys <t> ctrl+c ctrl+c ctrl+d` quits most agents.
 - Codex and OpenCode report their session only after the first prompt.
+- `window.maximize` toggles, and `app.zoom_in` adds to the zoom saved in `HERDR_APP_HOME`: a script
+  that runs them on every start must `app.zoom_reset` first and check the window size.
 
 ## Checks
 
