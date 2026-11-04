@@ -5,7 +5,7 @@
 #
 #   scripts/demo.sh start   make the demo repos, start the demo window, open spaces and agents
 #   scripts/demo.sh shot    save the window to $DEMO/shot.png and crop the previews into the repo
-#   scripts/demo.sh stop    close the demo window and stop its herdr-core
+#   scripts/demo.sh stop    close the demo window, stop its herdr-core and forget its spaces
 #
 # DEMO (default ~/.cache/herdr-mods-demo) holds everything. The PR badge comes from a stub `gh`
 # in $DEMO/bin (the demo repos have no GitHub remote); ports, git and session ids are real.
@@ -26,7 +26,7 @@ case "$WAYLAND" in /*) ;; *) WAYLAND="$REAL_RUNTIME/${WAYLAND:-wayland-0}" ;; es
 # The mouse pointer counts: resting on the window, it hovers a row or opens a tooltip in the shot.
 CROP_SPACES="${CROP_SPACES:-0 56 296 290}"
 CROP_AGENTS="${CROP_AGENTS:-0 690 296 950}"
-CROP_SYSSTAT="${CROP_SYSSTAT:-2930 1370 3350 1406}"
+CROP_SYSSTAT="${CROP_SYSSTAT:-2960 1370 3410 1406}"
 
 demo_env() {
   export HERDR_APP_HOME="$DEMO/home" XDG_RUNTIME_DIR="$DEMO/run" XDG_STATE_HOME="$DEMO/state" XDG_DATA_HOME="$DEMO/share"
@@ -107,6 +107,7 @@ start() {
   cp "$REPO/layout/main-plus.json" "$HERDR_APP_HOME/layouts/main-plus.json"
   do_ layout.switch '{"name":"main-plus"}'
   do_ window.maximize
+  do_ app.zoom_reset
   do_ app.zoom_in
   local w="$DEMO/work"
   if herdr-app ls | grep -q '"acme-api"'; then
@@ -118,6 +119,8 @@ start() {
     space web-dashboard "$w/web-dashboard" '["python3","-m","http.server","5173","--bind","127.0.0.1"]'
     space docs-site "$w/docs-site" "$(have pi && echo '["pi"]')"
   fi
+  # Show web-dashboard: its terminal is the demo server, nothing from your own agent setup.
+  do_ space.select '{"index":3}'
   echo "Demo window up. For Recent sessions, quit one agent (docs-site's Pi: Ctrl+C twice, then Ctrl+D),"
   echo "wait ~10 s for ports and the PR badge, then: scripts/demo.sh shot"
 }
@@ -125,6 +128,12 @@ start() {
 shot() {
   demo_env
   herdr-app shot "$DEMO/shot.png" >/dev/null
+  # window.maximize toggles, so start's may have restored a window saved maximized: fix it here.
+  set -- $CROP_SYSSTAT
+  if [ "$(python3 -c 'import sys; from PIL import Image; print(Image.open(sys.argv[1]).size[0])' "$DEMO/shot.png")" -lt "$3" ]; then
+    do_ window.maximize; sleep 1
+    herdr-app shot "$DEMO/shot.png" >/dev/null
+  fi
   python3 - "$DEMO/shot.png" "$REPO" "$CROP_SPACES" "$CROP_AGENTS" "$CROP_SYSSTAT" <<'PY'
 import sys
 from PIL import Image
@@ -142,7 +151,10 @@ stop() {
   demo_env
   herdr-app "do" window.close >/dev/null 2>&1 || true
   hc server stop >/dev/null 2>&1 || true
-  echo "Demo stopped ($DEMO kept; delete it when done)."
+  # Without its saved spaces the next start opens them fresh, with their agents and server running;
+  # without the mods' data, Recent sessions starts empty instead of piling up old demo runs.
+  rm -rf "$DEMO/state" "$DEMO/home/data"
+  echo "Demo stopped (repos in $DEMO kept; delete it when done)."
 }
 
 case "${1:-}" in
