@@ -6,7 +6,7 @@
 # is moved to ~/.cache/herdr-mods/backup-<time>/, never deleted.
 #
 #   ./install.sh               mods + agent hooks
-#   ./install.sh --mods-only   only the three mods
+#   ./install.sh --mods-only   only the mods
 #   ./install.sh --watch       mods only, then keep copying edits from this checkout (development)
 set -euo pipefail
 
@@ -45,7 +45,7 @@ link() {
 # changes, and an edit behind a symlink never reaches that folder. A marker file tells our copies apart.
 copy_mods() {
   local m dst
-  for m in agents-ids spaces-plus sysstat sessions; do
+  for m in agents-ids spaces-plus sysstat sessions usage; do
     dst="$APP/mods/$m"
     if [ -L "$dst" ]; then rm "$dst"; elif [ -e "$dst" ] && [ ! -e "$dst/.herdr-mods" ]; then aside "$dst"; fi
     mkdir -p "$dst"
@@ -78,7 +78,7 @@ PY
 
 echo "Mods -> $APP/mods"
 copy_mods
-command -v herdr-app >/dev/null && for m in agents-ids spaces-plus sysstat sessions; do herdr-app check "$APP/mods/$m" | tail -1; done
+command -v herdr-app >/dev/null && for m in agents-ids spaces-plus sysstat sessions usage; do herdr-app check "$APP/mods/$m" | tail -1; done
 if [ ! -e "$APP/layouts/main-plus.json" ]; then
   mkdir -p "$APP/layouts" && cp "$REPO/layout/main-plus.json" "$APP/layouts/"
   echo "  layout main-plus added: herdr-app do layout.switch '{\"name\":\"main-plus\"}'"
