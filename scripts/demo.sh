@@ -32,6 +32,9 @@ demo_env() {
   export HERDR_APP_HOME="$DEMO/home" XDG_RUNTIME_DIR="$DEMO/run" XDG_STATE_HOME="$DEMO/state" XDG_DATA_HOME="$DEMO/share"
   export WAYLAND_DISPLAY="$WAYLAND" DISPLAY="${DISPLAY:-:0}" PATH="$DEMO/bin:$PATH"
   export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$REAL_RUNTIME/bus}"
+  if [ "${DEMO_SESSIONS:-0}" = 1 ]; then
+    export HERDR_SESSIONS_ROOT="$DEMO/fake-home"
+  fi
   unset HC_TERMINAL_ID HC_TERMINAL_SOCKET
 }
 
@@ -103,13 +106,34 @@ start() {
     for _ in $(seq 40); do herdr-app status >/dev/null 2>&1 && break; sleep 0.5; done
     herdr-app status >/dev/null 2>&1 || { echo "The demo window didn't start; see $DEMO/app.log" >&2; exit 1; }
   fi
-  HERDR_APP_CONFIG="$HERDR_APP_HOME" "$REPO/install.sh" --mods-only >/dev/null
+  mkdir -p "$HERDR_APP_HOME/mods" "$HERDR_APP_HOME/layouts"
+  local m
+  for m in agents-ids spaces-plus sysstat sessions; do
+    mkdir -p "$HERDR_APP_HOME/mods/$m"
+    rsync -a --delete "$REPO/$m/mods/$m/" "$HERDR_APP_HOME/mods/$m/"
+  done
   cp "$REPO/layout/main-plus.json" "$HERDR_APP_HOME/layouts/main-plus.json"
   do_ layout.switch '{"name":"main-plus"}'
   do_ window.maximize
   do_ app.zoom_reset
   do_ app.zoom_in
   local w="$DEMO/work"
+  if [ "${DEMO_SESSIONS:-0}" = 1 ]; then
+    python3 - "$HERDR_SESSIONS_ROOT" <<'PY'
+import json, sys, time
+from pathlib import Path
+root = Path(sys.argv[1]) / '.pi/agent/sessions/acme'
+root.mkdir(parents=True, exist_ok=True)
+for name, title in [('demo-1234', 'Build search for the project'), ('demo-5678', 'Review the authentication flow')]:
+    (root / f'2025-01-01_{name}.jsonl').write_text('\n'.join(json.dumps(x) for x in [
+        {'type': 'session', 'id': name, 'cwd': '/home/alex/acme', 'timestamp': '2025-01-01T12:00:00Z'},
+        {'type': 'message', 'message': {'role': 'user', 'content': [{'type': 'text', 'text': title}]}}]))
+PY
+    space acme "$w/acme-api" '["/bin/sh"]'
+    do_ mod.open '{"name":"sessions"}'
+    echo "Demo sessions window up."
+    return
+  fi
   if herdr-app ls | grep -q '"acme-api"'; then
     echo "Demo spaces already open."
   else
@@ -128,6 +152,17 @@ start() {
 shot() {
   demo_env
   herdr-app shot "$DEMO/shot.png" >/dev/null
+  if [ "${DEMO_SESSIONS:-0}" = 1 ]; then
+    python3 - "$DEMO/shot.png" "$REPO/sessions/preview.png" <<'PY'
+import sys
+from PIL import Image
+im = Image.open(sys.argv[1])
+w, h = im.size
+im.crop((max(0, w // 2 - 480), max(0, h // 2 - 420), min(w, w // 2 + 480), min(h, h // 2 + 420))).save(sys.argv[2])
+print(f'shot {w}x{h}: {sys.argv[1]}')
+PY
+    return
+  fi
   # window.maximize toggles, so start's may have restored a window saved maximized: fix it here.
   set -- $CROP_SYSSTAT
   if [ "$(python3 -c 'import sys; from PIL import Image; print(Image.open(sys.argv[1]).size[0])' "$DEMO/shot.png")" -lt "$3" ]; then
