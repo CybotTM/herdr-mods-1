@@ -56,7 +56,9 @@ export default class Sessions extends View {
     if (!row) return;
     const argv = resumeArgv(row.app, row.id);
     const all = spaces();
-    const space = all.find(s => s.active && s.machine === row.machine) ?? all.find(s => s.machine === row.machine);
+    // A local space has no machine field; rows from this computer carry null.
+    const here = s => (s.machine ?? null) === row.machine;
+    const space = all.find(s => s.active && here(s)) ?? all.find(here);
     if (!argv || !space) { this.error = 'Open a space on that machine first.'; cx.notify(); return; }
     closeOverlay(props().overlay);
     run('tab.new', { space: space.id, argv, ...(row.folder_exists ? { folder: row.cwd } : {}) });
