@@ -168,6 +168,16 @@
               }
             },
             {
+              "id": "usage",
+              "type": "block",
+              "content": {
+                "mod": "usage"
+              },
+              "size": {
+                "px": 120
+              }
+            },
+            {
               "id": "sysstat",
               "type": "block",
               "content": {

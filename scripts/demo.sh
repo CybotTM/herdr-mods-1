@@ -27,6 +27,7 @@ case "$WAYLAND" in /*) ;; *) WAYLAND="$REAL_RUNTIME/${WAYLAND:-wayland-0}" ;; es
 CROP_SPACES="${CROP_SPACES:-0 56 296 290}"
 CROP_AGENTS="${CROP_AGENTS:-0 690 296 950}"
 CROP_SYSSTAT="${CROP_SYSSTAT:-2960 1370 3410 1406}"
+CROP_USAGE="${CROP_USAGE:-2850 1370 2960 1406}"
 
 demo_env() {
   export HERDR_APP_HOME="$DEMO/home" XDG_RUNTIME_DIR="$DEMO/run" XDG_STATE_HOME="$DEMO/state" XDG_DATA_HOME="$DEMO/share"
@@ -103,8 +104,19 @@ start() {
     for _ in $(seq 40); do herdr-app status >/dev/null 2>&1 && break; sleep 0.5; done
     herdr-app status >/dev/null 2>&1 || { echo "The demo window didn't start; see $DEMO/app.log" >&2; exit 1; }
   fi
-  HERDR_APP_CONFIG="$HERDR_APP_HOME" "$REPO/install.sh" --mods-only >/dev/null
-  cp "$REPO/layout/main-plus.json" "$HERDR_APP_HOME/layouts/main-plus.json"
+  for m in agents-ids spaces-plus sysstat usage; do
+    mkdir -p "$HERDR_APP_HOME/mods/$m"
+    rsync -a "$REPO/$m/mods/$m/" "$HERDR_APP_HOME/mods/$m/"
+  done
+  mkdir -p "$HERDR_APP_HOME/layouts"
+  python3 - "$REPO/layout/main-plus.json" "$HERDR_APP_HOME/layouts/main-plus.json" "$REPO/scripts/demo-usage.json" <<'PY'
+import json, sys
+layout = json.load(open(sys.argv[1]))
+status = layout['children'][1]['children'][-1]
+next(b for b in status['children'] if b['id'] == 'usage')['content']['props'] = {'command': ['cat', sys.argv[3]]}
+with open(sys.argv[2], 'w') as f:
+    json.dump(layout, f, indent=2)
+PY
   do_ layout.switch '{"name":"main-plus"}'
   do_ window.maximize
   do_ app.zoom_reset
@@ -134,14 +146,14 @@ shot() {
     do_ window.maximize; sleep 1
     herdr-app shot "$DEMO/shot.png" >/dev/null
   fi
-  python3 - "$DEMO/shot.png" "$REPO" "$CROP_SPACES" "$CROP_AGENTS" "$CROP_SYSSTAT" <<'PY'
+  python3 - "$DEMO/shot.png" "$REPO" "$CROP_SPACES" "$CROP_AGENTS" "$CROP_SYSSTAT" "$CROP_USAGE" <<'PY'
 import sys
 from PIL import Image
 shot, repo, *crops = sys.argv[1:]
 im = Image.open(shot)
 print(f"shot {im.size[0]}x{im.size[1]}: {shot}")
 im.save(f"{repo}/docs/window.png")
-for mod, box in zip(["spaces-plus", "agents-ids", "sysstat"], crops):
+for mod, box in zip(["spaces-plus", "agents-ids", "sysstat", "usage"], crops):
     im.crop(tuple(int(v) for v in box.split())).save(f"{repo}/{mod}/preview.png")
     print(f"  {mod}/preview.png <- {box}")
 PY

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 2,
+  "providers": [
+    {"id":"claude","state":"ok","windows":[{"id":"weekly-all","label":"Weekly (all)","usedPercent":7,"resetAt":"2030-11-13T22:59:59Z"}]},
+    {"id":"codex","state":"ok","windows":[{"id":"primary","label":"Primary","usedPercent":31,"resetAt":"2030-11-13T16:56:48Z"}]},
+    {"id":"grok","state":"auth-needed","windows":[]},
+    {"id":"opencode","state":"ok","windows":[{"id":"weekly","label":"Weekly","usedPercent":11,"resetAt":"2030-11-09T00:00:00Z"}]}
+  ]
+}
