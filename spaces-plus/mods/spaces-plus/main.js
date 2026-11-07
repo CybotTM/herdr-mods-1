@@ -12,7 +12,7 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, readTextFile, appHome } from "herdr";
-import { PORTS_SCRIPT, assignPorts, changedCount, cpuPercent, cpuTimes, duration, memPercent, parseListeners, portUrl, prsByBranch, spaceName, tabLabel, tilde } from "./extras.mjs";
+import { PORTS_SCRIPT, assignPorts, changedCount, ciStatus, cpuPercent, cpuTimes, duration, machineStatus, memPercent, offlineTimes, parseListeners, portUrl, prsByBranch, spaceName, tabLabel, tilde } from "./extras.mjs";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -69,6 +69,7 @@ export default class Spaces extends View {
     this.pressed = null;
     this.over = null;
     this.machines = [];
+    this.offlineSince = {}; // first observation, not the actual disconnect time
     this.reconnecting = JSON.parse(localStorage.getItem("machines.reconnecting") ?? "{}");
     for (const state of Object.values(this.reconnecting)) state.busy = false;
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
@@ -139,7 +140,13 @@ export default class Spaces extends View {
 
   refreshMachines(cx) {
     cx.spawn(async cx => {
-      try { const r = await hc(["machine", "ls", "--json"]); if (r.code === 0) this.machines = (JSON.parse(r.stdout).machines ?? []).filter((m) => !m.temporary); } catch {}
+      try {
+        const r = await hc(["machine", "ls", "--json"]);
+        if (r.code === 0) {
+          this.machines = (JSON.parse(r.stdout).machines ?? []).filter((m) => !m.temporary);
+          this.offlineSince = offlineTimes(this.machines, this.offlineSince);
+        }
+      } catch {}
       // Closed spaces (`recent` in view.json: {name, folder, machine?}); no herdr function reads them.
       try { this.recent = JSON.parse(await readTextFile(`${appHome()}/view.json`) ?? "{}").recent ?? []; } catch {}
       cx.notify();
@@ -185,8 +192,8 @@ export default class Spaces extends View {
       if (now - (this.prs[g.repo]?.at ?? 0) < 300000) continue;
       this.prs[g.repo] = { at: now, branches: this.prs[g.repo]?.branches ?? new Map() };
       try {
-        const r = await exec("gh", ["pr", "list", "--state", "all", "--limit", "100", "--json", "number,headRefName,state,isDraft,url"], { cwd: place(s, ps), on: s.machine ?? null });
-        if (r.code === 0) this.prs[g.repo].branches = prsByBranch(r.stdout);
+        const r = await exec("gh", ["pr", "list", "--state", "all", "--limit", "100", "--json", "number,headRefName,state,isDraft,url,statusCheckRollup"], { cwd: place(s, ps), on: s.machine ?? null });
+        if (r.code === 0) this.prs[g.repo].branches = prsByBranch(r.stdout, this.prs[g.repo].branches, now);
       } catch {}
     }
   }
@@ -238,10 +245,11 @@ export default class Spaces extends View {
     const out = [];
     const pr = this.pr(g);
     if (pr) {
-      const color = pr.state === "MERGED" ? t.ansi5 : pr.draft ? t.dim : t.ansi2;
+      const ci = ciStatus(pr.checks);
+      const color = ci?.tone === "error" ? t.ansi1 : ci?.tone === "warning" ? t.ansi3 : pr.state === "MERGED" ? t.ansi5 : pr.draft ? t.dim : t.ansi2;
       const word = pr.state === "MERGED" ? "merged" : pr.draft ? "draft" : "open";
       out.push(div().id(`pr-${w.id}`).flex_none().text_color(color).hover((s) => s.text_color(t.foreground))
-        .tooltip(`Pull request #${pr.number} (${word})\n${pr.url}\nclick: open`)
+        .tooltip(`Pull request #${pr.number} (${word})${ci ? `\n${ci.text}` : ""}\n${pr.url}\nclick: open`)
         .on_click((_e, cx) => { cx.stop_propagation(); this.open(pr.url); })
         .child(`#${pr.number}`));
     }
@@ -418,8 +426,10 @@ export default class Spaces extends View {
       const machine = this.machines.find(k => k.name === m) ?? repair?.machine;
       const connected = !m || machine?.state === "connected";
       const rebuilt = this.rebuilt(machine) || !!repair;
+      const offline = connected ? null : machineStatus(machine, this.offlineSince[m]);
       const folded = this.folded.has(m);
       const head = h_flex().id(`machine-${m ?? "local"}`).h(26).flex_none().px(collapsed ? 2 : 8).gap(7).items_center().text_size(11).text_color(t.dim)
+        .when(Boolean(offline), el => el.opacity(0.7).tooltip(offline.tooltip))
         .cursor_pointer().hover(s => s.bg(t.hover))
         .on_click((_e, cx) => {
           folded ? this.folded.delete(m) : this.folded.add(m);
@@ -432,7 +442,6 @@ export default class Spaces extends View {
           .child(div().flex_1())
           .when(connected && Boolean(this.load[m ?? ""]), el => el.child(this.loadChip(this.load[m ?? ""], t, m)))
           .when(Boolean(m) && connected && !this.load[m], el => el.child(div().flex_none().text_size(10.5).text_color(t.ansi2).child("connected")))
-          .when(!connected && !rebuilt, el => el.child(div().flex_none().child((machine?.state ?? "asleep").replace(/_/g, " "))))
           .when(rebuilt, el => el.child(h_flex().flex_none().gap(3).items_center()
             .child(div().max_w(140).truncate().child(repair?.error || "rebuilt ·"))
             .child(div().id(`machine-connect-${m}`).text_color(repair?.error ? t.blocked : t.muted)
@@ -457,7 +466,8 @@ export default class Spaces extends View {
           .on_click(() => run("space.new", { name: r.name, folder: r.folder, machine: m ?? "" }))
           .child(svg("mods/workspace-chrome/clock.svg").size(12).flex_none().text_color(t.dim))
           .child(div().min_w(0).truncate().child(`${r.name} \u00b7 ${tilde(r.folder)}`)));
-      return [head, ...(folded ? [] : mine.length ? mine.flatMap(draw) : [loading(m) ? loadingRow(m) : empty, ...again])];
+      const status = !collapsed && offline && !rebuilt ? [div().id(`machine-status-${m}`).h(18).flex_none().pl(28).text_size(10.5).text_color(t.dim).tooltip(offline.tooltip).child(offline.text)] : [];
+      return [head, ...status, ...(folded ? [] : mine.length ? mine.flatMap(draw) : connected ? [loading(m) ? loadingRow(m) : empty, ...again] : [])];
     });
   }
 

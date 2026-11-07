@@ -1,5 +1,6 @@
 // Self-check for spaces-plus' pure helpers (no window needed): node mods/spaces-plus/test_logic.mjs
 import assert from "node:assert/strict";
+import * as extras from "./extras.mjs";
 import { assignPorts, changedCount, cpuPercent, cpuTimes, duration, memPercent, parseListeners, portUrl, prsByBranch, spaceName, tabLabel, tilde } from "./extras.mjs";
 
 assert.equal(tilde("/home/alex/code/x"), "~/code/x");
@@ -50,6 +51,38 @@ assert.deepEqual(prs.get("fix"), { number: 12, state: "OPEN", draft: true, url: 
 assert.equal(prs.get("old"), undefined);
 assert.equal(prs.get("done").state, "MERGED");
 assert.equal(prsByBranch("not json").size, 0);
+
+// CI: failures beat stuck queues; no alert for normal running or passing checks.
+assert.equal(typeof extras.ciStatus, "function");
+assert.deepEqual(extras.ciStatus([{ name: "tests", status: "COMPLETED", conclusion: "FAILURE" }], 1), { tone: "error", text: "Failed: tests" });
+const minute = 60000, now = Date.parse("2026-01-01T01:00:00Z");
+const check = (status, time) => ({ name: "build", status, startedAt: time });
+assert.equal(extras.ciStatus([check("IN_PROGRESS", "2026-01-01T00:00:00Z")], now), null);
+assert.equal(extras.ciStatus([check("QUEUED", "2026-01-01T00:15:00Z")], now), null);
+assert.deepEqual(extras.ciStatus([check("QUEUED", "2026-01-01T00:08:00Z")], now), { tone: "warning", text: "queued 52m" });
+assert.deepEqual(extras.ciStatus([{ context: "lint", state: "ERROR" }, check("QUEUED", "2026-01-01T00:00:00Z")], now), { tone: "error", text: "Failed: lint" });
+const queueJson = JSON.stringify([{ number: 42, headRefName: "work", state: "OPEN", statusCheckRollup: [{ name: "build", status: "QUEUED", startedAt: "0001-01-01T00:00:00Z", detailsUrl: "https://example.com/job/1" }] }]);
+const firstQueue = prsByBranch(queueJson, new Map(), now);
+assert.equal(extras.ciStatus(firstQueue.get("work").checks, now), null);
+const stillQueued = prsByBranch(queueJson, firstQueue, now + 52 * minute);
+assert.deepEqual(extras.ciStatus(stillQueued.get("work").checks, now + 52 * minute), { tone: "warning", text: "queued 52m" });
+const changedRun = prsByBranch(queueJson.replace("job/1", "job/2"), stillQueued, now + 52 * minute);
+assert.equal(extras.ciStatus(changedRun.get("work").checks, now + 52 * minute), null);
+assert.equal(extras.ciStatus([{ status: "COMPLETED", conclusion: "SKIPPED" }, { status: "COMPLETED", conclusion: "SUCCESS" }], now), null);
+assert.deepEqual(extras.ciStatus([{ name: "build", conclusion: "FAILURE" }, { context: "lint", state: "FAILURE" }], now), { tone: "error", text: "Failed: build, lint" });
+
+// Disconnected state uses the first observed outage, and resets on reconnect.
+assert.equal(typeof extras.machineStatus, "function");
+assert.deepEqual(extras.machineStatus({ state: "unreachable", why: "ssh: connect: Connection timed out" }, now - 52 * minute, now), { text: "ssh timeout · 52m", tooltip: "ssh: connect: Connection timed out\nNot connected for 52m (observed)" });
+assert.equal(extras.machineStatus({ state: "connected" }, now, now), null);
+assert.deepEqual(extras.machineStatus({ state: "unreachable", why: "connection refused", since_ms: now - 2 * minute }, now - minute, now), { text: "connection refused · 2m", tooltip: "connection refused\nNot connected for 2m" });
+assert.equal(extras.machineStatus({ state: "unreachable", why: "Host key verification failed" }, null, now).text, "host key");
+assert.equal(extras.machineStatus({ state: "needs_login" }, null, now).text, "not connected");
+assert.equal(typeof extras.offlineTimes, "function");
+assert.deepEqual(extras.offlineTimes([{ name: "box", state: "unreachable" }], {}, now), { box: now });
+assert.deepEqual(extras.offlineTimes([{ name: "box", state: "unreachable" }], { box: now }, now + minute), { box: now });
+assert.deepEqual(extras.offlineTimes([{ name: "box", state: "connected" }], { box: now }, now + minute), {});
+assert.deepEqual(extras.offlineTimes([], { box: now }, now + minute), {});
 
 // Machine load.
 const a = cpuTimes("cpu  100 0 100 700 100 0 0 0\n");

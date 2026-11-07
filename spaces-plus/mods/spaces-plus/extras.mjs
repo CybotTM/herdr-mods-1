@@ -91,15 +91,48 @@ export const portUrl = (p, machine) => `http://${p.host === "localhost" && machi
 
 /** `gh pr list --json number,headRefName,state,isDraft,url` output as branch -> the newest PR from it
  *  ({ number, state, draft, url }); closed-unmerged ones are left out. */
-export function prsByBranch(json) {
+export function prsByBranch(json, previous = new Map(), now = Date.now()) {
   const out = new Map();
   let list = [];
   try { list = JSON.parse(json ?? "[]"); } catch {}
   for (const p of Array.isArray(list) ? list : []) {
     if (!p?.headRefName || out.has(p.headRefName) || p.state === "CLOSED") continue;
-    out.set(p.headRefName, { number: p.number, state: p.state, draft: Boolean(p.isDraft), url: p.url });
+    const pr = { number: p.number, state: p.state, draft: Boolean(p.isDraft), url: p.url };
+    if (Array.isArray(p.statusCheckRollup)) {
+      const old = previous.get(p.headRefName);
+      pr.checks = p.statusCheckRollup.map(c => {
+        if (c.status !== "QUEUED" && c.state !== "PENDING") return c;
+        const key = c.detailsUrl || c.targetUrl || c.name || c.context;
+        const prior = old?.number === p.number && old.checks?.find(x => (x.detailsUrl || x.targetUrl || x.name || x.context) === key && (x.status === "QUEUED" || x.state === "PENDING"));
+        // shortcut: gh omits check creation time, count from first observation until it exposes one.
+        const date = Date.parse(c.createdAt || c.startedAt);
+        return { ...c, queuedSince: date > 0 && date <= now ? date : prior?.queuedSince ?? now };
+      });
+    }
+    out.set(p.headRefName, pr);
   }
   return out;
+}
+
+export function ciStatus(checks, now = Date.now()) {
+  const failed = (checks ?? []).filter(c => ["FAILURE", "ERROR", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE"].includes(c.conclusion || c.state));
+  if (failed.length) return { tone: "error", text: `Failed: ${failed.map(c => c.name || c.context || "check").join(", ")}` };
+  const ages = (checks ?? []).filter(c => c.status === "QUEUED" || c.state === "PENDING")
+    .map(c => now - (c.queuedSince ?? Date.parse(c.createdAt || c.startedAt))).filter(age => age > 45 * 60000);
+  return ages.length ? { tone: "warning", text: `queued ${Math.floor(Math.max(...ages) / 60000)}m` } : null;
+}
+
+export const offlineTimes = (machines, previous, now = Date.now()) => Object.fromEntries(
+  machines.filter(m => m.state !== "connected").map(m => [m.name, previous[m.name] ?? now]),
+);
+
+export function machineStatus(machine, since, now = Date.now()) {
+  if (machine?.state === "connected") return null;
+  const why = machine?.why || "Not connected";
+  const reason = /host key|remote host identification/i.test(why) ? "host key" : /timed? ?out|timeout/i.test(why) ? "ssh timeout" : /refused/i.test(why) ? "connection refused" : "not connected";
+  const from = machine?.since_ms ?? since;
+  const age = from == null ? "" : duration(Math.max(0, now - from));
+  return { text: `${reason}${age ? ` · ${age}` : ""}`, tooltip: `${why}${age ? `\nNot connected for ${age}${machine?.since_ms == null ? " (observed)" : ""}` : ""}` };
 }
 
 /** /proc/stat's first line as [busy, total] jiffies, or null. */
