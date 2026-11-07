@@ -13,6 +13,8 @@ integrations that make coding agents report their session IDs to it:
 | `agents-ids/` | Herdr's `agents` mod + session-ID line + Recent sessions with Resume |
 | `spaces-plus/` | Herdr's `spaces` mod + git line, status, tabs, ports, PR badge, machine load |
 | `sysstat/` | Status bar: CPU (sparkline), memory, AMD GPU of the shown space's machine |
+| `sessions/` | Search past Hermes, Pi and PiG sessions (overlay) and resume one in a new tab |
+| `usage/` | Status bar: AI provider quota from a configured collector command (Kuota JSON) |
 | `integrations/bin/agent-session-label` | The one script every hook calls; writes the labels |
 | `integrations/{pi,opencode,hermes}/` | Pi/PiG extension, OpenCode TUI plugin, Hermes plugin |
 | `install.sh` | Copies mods, links integrations, adds Claude Code / Codex hooks, once |
@@ -82,8 +84,8 @@ on herdr.dev (a layout package would need its own copies of the mods); it lives 
 Run all of these before every commit; all must pass:
 
 ```sh
-for m in agents-ids spaces-plus sysstat; do node $m/mods/$m/test_logic.mjs && herdr-app check $m/mods/$m; done
-python3 -I tests/test_label.py && python3 -I tests/test_hermes_plugin.py
+for m in agents-ids spaces-plus sysstat sessions usage; do node $m/mods/$m/test_logic.mjs && herdr-app check $m/mods/$m; done
+python3 -I tests/test_label.py && python3 -I tests/test_hermes_plugin.py && python3 -I tests/test_sessions_search.py
 shellcheck -S warning install.sh scripts/demo.sh
 ```
 
