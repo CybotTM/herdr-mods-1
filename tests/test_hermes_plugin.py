@@ -29,6 +29,7 @@ assert calls == [(["hc", "label", "t9", "agent.session=s1", "agent.app=hermes"],
 calls.clear()
 hooks["pre_tool_call"](session_id="s1", tool_name="terminal", args={"command": "git status secret-token"})
 hooks["pre_tool_call"](session_id="s1", tool_name="terminal", args={"command": "git status another-secret"})
+hooks["pre_tool_call"](session_id="s1", tool_name="read_file", args={"path": "/secret"})  # throttled
 assert calls == [(["hc", "label", "t9", "agent.doing=running: terminal git", "agent.doing.since=1234"], None)]
 hooks["on_human_input_request"](session_id="s1")
 hooks["post_llm_call"](session_id="s1")

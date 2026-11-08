@@ -16,6 +16,7 @@ hooks.session_start({}, { mode: "tui", sessionManager: { getSessionId: () => "si
 hooks.turn_start();
 hooks.tool_call({ toolName: "bash", input: { command: "npm test secret-token" } });
 hooks.tool_call({ toolName: "bash", input: { command: "npm test other-secret" } });
+hooks.tool_call({ toolName: "read", input: { path: "/secret" } });
 hooks.agent_settled();
 for (let i = 0; i < 100 && (!existsSync(log) || readFileSync(log, "utf8").trim().split("\n").length < 4); i++) await new Promise(r => setTimeout(r, 20));
 const lines = readFileSync(log, "utf8").trim().split("\n");

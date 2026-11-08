@@ -20,6 +20,7 @@ _lock = threading.Lock()
 _labelled: dict[str, str] = {}  # terminal -> session id last written
 _sessions = {}  # session id -> (terminal, client environment)
 _doing_last = {}
+_doing_at = {}
 _queue = queue.Queue()
 _worker_started = False
 
@@ -69,6 +70,7 @@ def _label(**kwargs) -> None:
             return
         _labelled[term] = sid
         _doing_last.pop(term, None)
+        _doing_at.pop(term, None)
         _send(["hc", "label", term, f"agent.session={sid}", "agent.app=hermes"], env)
 
 
@@ -81,7 +83,13 @@ def _doing(text, **kwargs):
         term, env = session
         if _labelled.get(term) != sid or _doing_last.get(term) == text:
             return
+        previous = _doing_last.get(term, "")
+        now = time.monotonic()
+        # shortcut: a rapid second tool may be hidden until the next state, add trailing updates if needed.
+        if text.startswith("running:") and previous.startswith("running:") and now - _doing_at.get(term, 0) < 2:
+            return
         _doing_last[term] = text
+        _doing_at[term] = now
         _send(["hc", "label", term, f"agent.doing={text}", f"agent.doing.since={int(time.time())}"], env)
 
 

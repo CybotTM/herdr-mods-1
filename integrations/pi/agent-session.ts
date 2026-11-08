@@ -7,10 +7,14 @@ import { basename } from "node:path";
 
 export default function (pi) {
   if (!process.env.HC_TERMINAL_ID) return; // not in herdr-app
-  let active = false, last = "", pending = [], writing = false;
+  let active = false, last = "", lastAt = 0, pending = [], writing = false;
   const write = (text) => {
     if (!active || text === last) return;
+    const now = Date.now();
+    // shortcut: a rapid second tool may be hidden until the next state, add trailing updates if needed.
+    if (text.startsWith("running:") && last.startsWith("running:") && now - lastAt < 2000) return;
     last = text;
+    lastAt = now;
     pending.push(text);
     const drain = () => {
       if (writing || !pending.length) return;
