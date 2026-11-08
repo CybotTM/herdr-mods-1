@@ -8,6 +8,8 @@ a version (see [AGENTS.md](AGENTS.md#releases)).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-08
+
 ### Fixed
 
 - **integrations (Pi/PiG):** a PiG session was labeled `agent.app=pi`, so agents-ids resumed it with
@@ -148,7 +150,8 @@ First public release.
   OpenCode (TUI plugin), all through `integrations/bin/agent-session-label`.
 - `install.sh` (`--mods-only`, `--watch`) and the `main-plus` layout.
 
-[Unreleased]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.2.1...v0.3.0
