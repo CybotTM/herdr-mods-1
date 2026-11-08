@@ -476,7 +476,8 @@ export default class Agents extends View {
           cx.stop_propagation();
           cx.write_to_clipboard(copy);
         })
-        .child(div().flex_none().text_color(t.accent).child(a.address))
+        // agents-ids: the machine shows at the right, so a remote address keeps only its id and the session id fits.
+        .child(div().flex_none().text_color(t.accent).child(machine ? a.address.slice(machine.length + 1) : a.address))
         .when(Boolean(sid), (el) => el.child(div().min_w(0).truncate().text_color(t.dim).child(` \u00b7 ${shortSid(sid)}`)));
       return h_flex()
         .id(`ag-${a.address}`)

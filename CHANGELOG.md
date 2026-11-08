@@ -8,6 +8,12 @@ a version (see [AGENTS.md](AGENTS.md#releases)).
 
 ## [Unreleased]
 
+### Fixed
+
+- **agents-ids:** an agent on another machine showed `machine/t5c` with no room left for its session
+  id; the line now reads `t5c · <session>` (the machine is already on the right; hover still names the
+  full address, Shift-click still copies it).
+
 ## [0.4.0] - 2026-11-08
 
 ### Added
