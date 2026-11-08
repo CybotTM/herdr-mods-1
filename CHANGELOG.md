@@ -8,6 +8,14 @@ a version (see [AGENTS.md](AGENTS.md#releases)).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-08
+
+### Added
+
+- **agents-ids:** *Grouped by project* in the sort menu: one group per git repository, its worktrees
+  and subfolders included, so agents in different spaces of one repo sit together; a folder outside
+  git is its own group.
+
 ## [0.4.2] - 2026-11-08
 
 ### Fixed
@@ -150,7 +158,8 @@ First public release.
   OpenCode (TUI plugin), all through `integrations/bin/agent-session-label`.
 - `install.sh` (`--mods-only`, `--watch`) and the `main-plus` layout.
 
-[Unreleased]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.3.0...v0.4.0
