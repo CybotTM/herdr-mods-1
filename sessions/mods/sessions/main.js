@@ -29,6 +29,9 @@ export default class Sessions extends View {
   }
 
   search(cx, seq) {
+    // One scan at a time: a query typed meanwhile runs once this one ends, not alongside it.
+    if (this.running) { this.pending = true; return; }
+    this.running = true;
     const on = spaces().find(s => s.active)?.machine ?? null;
     const extra = Array.isArray(props()?.machines) ? props().machines.filter(m => typeof m === 'string' && m) : [];
     const targets = [...new Set([on, ...extra])];
@@ -48,6 +51,8 @@ export default class Sessions extends View {
         this.rows = results.flatMap(r => r.rows).sort((a, b) => b.timestamp - a.timestamp).slice(0, 50);
         this.error = results.some(r => r.error) ? 'Some machines could not be searched.' : '';
       } catch { if (seq === this.seq) this.error = 'Could not load the session search helper.'; }
+      this.running = false;
+      if (this.pending) { this.pending = false; return this.search(cx, this.seq); }
       if (seq === this.seq) { this.loading = false; cx.notify(); }
     });
   }

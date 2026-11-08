@@ -88,8 +88,7 @@ back to `ps` elsewhere (macOS: written for, not yet tried).
 
 Resume runs `claude --resume <id>`, `codex resume <id>`, `pi --session <id>` (PiG: `pig`),
 `opencode --session <id>` or `hermes --resume <id>`, and only for IDs made of letters, digits, `-`, `_`
-and `.`. It types the command into the agent's old terminal when that is back at a bare shell, and
-otherwise opens a new tab in the same space and folder.
+and `.`. It opens a new tab on the session's own machine, in its space and folder when those still exist.
 
 Hermes and Pi/PiG also set `agent.doing` (a short plain line: `thinking`, `running: <tool> [git|npm|…]`,
 `waiting for you`, `done`; never command arguments or paths) and `agent.doing.since` (epoch seconds of

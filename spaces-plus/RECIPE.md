@@ -26,9 +26,11 @@ checkout, drag to reorder), with:
   row): TCP ports that programs running in the space's folder listen on. Hover: program and address;
   click: opens `http://localhost:5173` (`http://<machine>:5173` for a remote space) in the browser.
 - **Pull request**, `#42` before the ports: the newest PR from the space's branch, green when open, `dim`
-  when draft, `ansi5` when merged; closed-unmerged ones are left out. Click opens it on GitHub.
+  when draft, `ansi5` when merged; closed-unmerged ones are left out. Red when a check failed, amber
+  when CI has been queued for over 45 minutes; the tooltip names the failing checks. Click opens it on GitHub.
 - **Machine rows** add the number of spaces, and CPU (`muted`) and memory (`dim`) in use (`12% 45%`, red from 90%) on
-  connected machines; a remote without a reading yet shows a green `connected`.
+  connected machines; a remote without a reading yet shows a green `connected`. An unreachable machine
+  shows why (`ssh timeout`, `connection refused`, `host key`) and since when, with the full error on hover.
 - **Recent spaces** (up to 3, clock icon, `name · ~/folder`) under a machine with no spaces; click
   reopens one with `space.new`.
 - An unnamed `~` space takes the name of the agent running in it (`pi`, `claude`).
@@ -40,9 +42,11 @@ on Linux, `lsof` on macOS. A socket belongs to the space whose folder holds the 
 closely (a worktree's server shows on the worktree, not on the checkout around it); home folders take
 none; ports from 32768 up (private, ephemeral sockets) and the agents' own (`claude`, `codex`,
 `opencode`, `pi`, `hermes`) are left out. Pull requests come from
-`gh pr list --state all --json number,headRefName,state,isDraft,url` per repo, at most every 5 minutes,
-only for repos with a space on a branch other than `main`/`master`. Machine load reads `/proc/stat` and
-`/proc/meminfo` every 4 s. With the window in the background: ports once a minute, load every 30 s.
+`gh pr list --state all --json number,headRefName,state,isDraft,url,statusCheckRollup` per repo, at most
+every 5 minutes, only for repos with a space on a branch other than `main`/`master`, after the ports (a
+slow `gh` never holds up the port chips). Machine load reads `/proc/stat` and
+`/proc/meminfo` every 4 s. With the window in the background: ports once a minute, load every 30 s. With the sidebar narrowed to
+a rail nothing is polled: the rail shows none of it.
 
 **Built from:** a copy of the shipped `spaces` mod (herdr-app 0.1.12). Its own helpers are in
 `extras.mjs` (pure: `tilde`, `tabLabel`, `spaceName`, `changedCount`, `PORTS_SCRIPT`, `parseListeners`,

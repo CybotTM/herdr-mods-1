@@ -105,6 +105,8 @@ def pi(root, query, deadline):
                         first = content
                     if query and query.lower() in content.lower() and not match:
                         match = content
+                    if first and (match or not query):
+                        break  # the title and the match are all a row needs
                 folder = header.get('cwd') or ''
                 if not first or (query and not match and query.lower() not in (first + ' ' + str(folder)).lower()):
                     continue

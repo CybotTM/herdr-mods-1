@@ -13,9 +13,26 @@ a version (see [AGENTS.md](AGENTS.md#releases)).
 - **integrations (Pi/PiG):** a PiG session was labeled `agent.app=pi`, so agents-ids resumed it with
   `pi --session` instead of `pig --session`; PiG is now detected through its extension runtime
   (`PIG_EXT_HOST_INFO`), which plain Pi doesn't set.
+- **agents-ids:** Resume of a remote session opened it on this computer; it now opens on the session's
+  own machine, and does nothing when no space of that machine is open.
+- **agents-ids:** Resume no longer types into the old terminal, where it would submit a half-typed
+  line; it always opens a new tab, in the session's folder only if that still exists.
+- **agents-ids:** a hidden recent session came back when its terminal changed folder.
+- **agents-ids:** a session label like `__proto__` broke the Recent sessions list.
+- **integrations (Hermes):** a gateway started inside a Herdr terminal labelled that terminal for
+  clients outside Herdr.
+- **integrations:** a new session cleared the last agent's activity line only when it next reported.
+- **install.sh:** rewriting Claude Code or OpenCode settings turned a 0600 file into 0644; it keeps
+  the mode now.
+- **install.sh:** Pi's and PiG's moved-aside `agent-session.ts` overwrote each other in the backup; the
+  backup keeps full paths.
 
 ### Changed
 
+- **sessions:** searches run one at a time instead of one per keystroke, and stop reading a session
+  file once they have its title and match.
+- **spaces-plus:** nothing is polled while the sidebar is narrowed to a rail; port chips no longer wait
+  for a slow `gh pr list`.
 - **integrations (Pi/PiG):** a settled agent now reads `waiting for you` instead of `done`, since
   settling in the TUI means sitting at the prompt.
 - **integrations (Pi/PiG):** on Linux the extension checks once that it owns the terminal's

@@ -27,9 +27,10 @@ BACKUP="$HOME/.cache/herdr-mods/backup-$STAMP"
 
 # aside <path>: move whatever is at path to the backup folder (outside the target folder, so a
 # moved-aside mod or extension never gets loaded as a second copy).
+# The backup keeps the full path, so two files with one name (Pi's and PiG's agent-session.ts) don't collide.
 aside() {
-  mkdir -p "$BACKUP"
-  mv "$1" "$BACKUP/$(basename "$1")"
+  mkdir -p "$BACKUP$(dirname "$1")"
+  mv "$1" "$BACKUP$1"
   echo "  moved existing $1 to $BACKUP/"
 }
 
@@ -66,7 +67,13 @@ if any(h.get("command") == cmd for e in starts for h in e.get("hooks", [])):
     sys.exit(0)
 starts.append({"hooks": [{"type": "command", "command": cmd, "timeout": 5}]})
 tmp = path + ".tmp"
-with open(tmp, "w") as f:
+# The rewrite keeps the file's mode: settings can hold secrets and be 0600.
+mode = os.stat(path).st_mode & 0o777 if os.path.exists(path) else 0o644
+if os.path.exists(tmp):
+    os.unlink(tmp)
+fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+os.fchmod(fd, mode)
+with os.fdopen(fd, "w") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
 os.replace(tmp, path)
@@ -128,7 +135,13 @@ plugins = data.setdefault("plugins", [])
 if "./agent-session-label" not in plugins:
     plugins.append("./agent-session-label")
     tmp = path + ".tmp"
-    with open(tmp, "w") as f:
+    # The rewrite keeps the file's mode (see json_hook).
+    mode = os.stat(path).st_mode & 0o777 if os.path.exists(path) else 0o644
+    if os.path.exists(tmp):
+        os.unlink(tmp)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+    os.fchmod(fd, mode)
+    with os.fdopen(fd, "w") as f:
         json.dump(data, f, indent=2)
         f.write("\n")
     os.replace(tmp, path)

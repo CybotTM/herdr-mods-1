@@ -14,9 +14,15 @@ except each row is 44px tall instead of 30px and has two lines:
 1. The agent icon, the space name, `· <tab title>` in the dim color, the age and the status mark, as in
    the shipped mod.
 2. 11px text: the terminal address in the theme `accent` color, then `· <short session id>` in `dim`.
-   Without a session ID only the address shows.
+   Without a session ID only the address shows. A remote agent shows its address without the machine
+   (`t5c`, not `laptop/t5c`): the machine is already named on the right.
+3. When the agent sets `agent.doing`: what it is doing now and for how long (`running: git · 4m`), amber
+   once it has been on the same thing for over 30 minutes.
 
-3. **Recent sessions**, a foldable group after the others (header like the others, `Recent sessions n`):
+An X on each agent row opens a check of what closing it would lose (still working, uncommitted changes,
+sub-agents) before it ends the terminal; it refuses if the terminal changed meanwhile.
+
+**Recent sessions**, a foldable group after the others (header like the others, `Recent sessions n`):
    28px rows of the program name (`muted`), `<folder> · <short id>` (`dim`) and a `Resume` pill (10.5px
    semibold, `accent` text on a 12% tint of it), the age (`3h`, `dim`) and an X. Newest first; 5, then
    a `Show n more` row lists all remembered ones. An X on the header hides them all.
@@ -31,16 +37,17 @@ Shift-click copies the address; neither selects the row. A plain click selects t
 A session is *recent* when its terminal no longer runs it: the agent quit (the terminal is back at a
 shell or runs something else) or the terminal closed. The mod remembers each labelled session it sees
 (where, when) in `localStorage`, up to 20 for 14 days, so closed terminals and restarts don't lose
-them; one that runs again anywhere leaves the list. **Resume** at a bare shell types the command into
-that terminal; otherwise it opens a new tab in the session's space and folder with the command as its
-argv. Commands: `claude --resume`, `codex resume`, `pi --session`, `pig --session`, `opencode --session`,
+them; one that runs again anywhere leaves the list. **Resume** opens a new tab with the command as its
+argv, on the session's own machine: in its space if that still exists (else another space there), in its
+folder if that still exists. It never types into the old terminal, which may hold a half-typed line. Commands: `claude --resume`, `codex resume`, `pi --session`, `pig --session`, `opencode --session`,
 `hermes --resume`. Ctrl-clicking the row copies the session ID; the X beside Resume hides the session
 until it runs again.
 
 **Built from:** a copy of the shipped `agents` mod (herdr-app 0.1.12). Its own logic is in
 `extras.mjs` (pure: `shortSid`, `resumeArgv`, `rememberSessions`, `recentSessions`). In `main.js`: a map
 from terminal address to `labels["agent.session"]` from `terminals()`; the second line in the row
-render; `recentRow()` and `resume()` (`hc(["send", …])` or `run("tab.new", { space, folder, argv })`);
+render; `recentRow()` and `resume()` (`resumeSpace`, `exec("test", ["-d", cwd], { on })`, then
+`run("tab.new", { space, folder, argv })`);
 the sort popup opens `{ mod: "agents-ids" }`. The session ID comes from a terminal
 label any program can set: `hc label $HC_TERMINAL_ID agent.session=<id>`. `agent.app` names the program for Resume. This repo's
 `integrations/` sets both for Claude Code, Codex, Pi, PiG, OpenCode and Hermes; any other agent can
@@ -56,13 +63,15 @@ call the same script from its session-start hook.
   remembered it.
 - Agents save a session only once it has a message: Resume on one quit before its first prompt gets
   the agent's own "no session found".
-- Labels are written by any program: Resume runs only IDs of letters, digits, `-`, `_`, `.`, and types
-  only into a bare shell (never into an editor or another program in front).
+- Labels are written by any program: Resume runs only IDs of letters, digits, `-`, `_`, `.`, for the
+  known programs only, and always as an argv in a new tab (never typed into a terminal).
+- A session resumes only on the machine that holds it: when no space of that machine is open here,
+  Resume does nothing.
 - The mod is a copy: when Herdr ships a new `agents`, merge it (see the repo's README).
 
 **Done when:**
 - `herdr-app check mods/agents-ids` passes and `node mods/agents-ids/test_logic.mjs` prints `ok`.
 - `hc label <t> agent.session=test-1234567890` makes `<t> · test-123` appear under that agent within a
-  second; clicking it puts `test-1234567890` on the clipboard.
+  second; Ctrl-clicking it puts `test-1234567890` on the clipboard.
 - Quitting a labelled Claude Code moves it to Recent sessions; Resume there brings back the same
-  conversation in that terminal.
+  conversation in a new tab of that space.

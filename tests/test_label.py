@@ -35,13 +35,13 @@ calls = []
 m.subprocess.run = lambda cmd, **kw: calls.append(cmd)
 os.environ["HC_TERMINAL_ID"] = "t9"
 m.os.getppid = lambda: 21
-assert m.main(["x", "sid-1"]) == 0 and calls == [["hc", "label", "t9", "agent.session=sid-1", "agent.app=claude"]]
+assert m.main(["x", "sid-1"]) == 0 and calls == [["hc", "label", "t9", "agent.session=sid-1", "agent.app=claude", "agent.doing=", "agent.doing.since="]]
 calls.clear()
-m.main(["x", "sid-1", "30"]); assert calls[0][-1] == "agent.app=claude"  # the leader's name, not node's
+m.main(["x", "sid-1", "30"]); assert "agent.app=claude" in calls[0]  # the leader's name, not node's
 calls.clear()
-m.main(["x", "sid-1", "30", "pig"]); assert calls[0][-1] == "agent.app=pig"  # explicit app wins
+m.main(["x", "sid-1", "30", "pig"]); assert "agent.app=pig" in calls[0]  # explicit app wins
 calls.clear()
-m.main(["x", "sid-1", "-", "opencode"]); assert calls[0][-1] == "agent.app=opencode"  # "-": find the agent
+m.main(["x", "sid-1", "-", "opencode"]); assert "agent.app=opencode" in calls[0]  # "-": find the agent
 calls.clear(); m.os.getppid = lambda: 40
 m.main(["x", "sid-2"]); assert calls == []
 calls.clear(); m.time.time = lambda: 1234

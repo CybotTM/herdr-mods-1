@@ -156,7 +156,8 @@ export default class Spaces extends View {
   // Listening ports per space folder, one look per machine with spaces; once a minute while the
   // window is in the background.
   refreshPorts(cx) {
-    if (this.portsBusy || (!window()?.active && Date.now() - (this.portsAt ?? 0) < 60000)) return;
+    // spaces-plus: nothing polled here is drawn on the rail.
+    if (this.portsBusy || narrow() || (!window()?.active && Date.now() - (this.portsAt ?? 0) < 60000)) return;
     this.portsBusy = true;
     this.portsAt = Date.now();
     const sp = spaces(), ps = panes();
@@ -174,8 +175,12 @@ export default class Spaces extends View {
         } catch {} // the machine is away: no ports shown for it
       }
       this.ports = next;
-      await this.refreshPrs(sp, ps);
       this.portsBusy = false;
+      cx.notify();
+      // spaces-plus: gh can take its full 30 s; port chips don't wait for it.
+      if (this.prsBusy) return;
+      this.prsBusy = true;
+      try { await this.refreshPrs(sp, ps); } finally { this.prsBusy = false; }
       cx.notify();
     });
   }
@@ -205,7 +210,7 @@ export default class Spaces extends View {
   // CPU and memory of each machine with a header row (this computer too), from its /proc; every
   // 30 s while the window is in the background.
   refreshLoad(cx) {
-    if (this.loadBusy || !this.machines.length || (!window()?.active && Date.now() - (this.loadAt ?? 0) < 30000)) return;
+    if (this.loadBusy || narrow() || !this.machines.length || (!window()?.active && Date.now() - (this.loadAt ?? 0) < 30000)) return;
     this.loadBusy = true;
     this.loadAt = Date.now();
     const names = ["", ...this.machines.filter((m) => m.state === "connected").map((m) => m.name)];

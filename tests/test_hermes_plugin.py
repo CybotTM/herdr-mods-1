@@ -44,4 +44,11 @@ mod.bound_client_env = lambda: {"HC_TERMINAL_ID": "t4", "HC_TERMINAL_SOCKET": "/
 label(platform="local", session_id="s3")
 assert calls == [(["hc", "label", "t4", "agent.session=s3", "agent.app=hermes"], "/run/x.sock"),
                  (["hc", "label", "t4", "agent.doing=thinking", "agent.doing.since=1234"], "/run/x.sock")], calls
+
+# A gateway started in a Herdr terminal must not label it for a client outside Herdr.
+calls.clear()
+os.environ["HC_TERMINAL_ID"] = "t1"
+mod.bound_client_env = lambda: {"PATH": "/usr/bin"}
+label(platform="local", session_id="s4")
+assert calls == [], calls
 print("ok")

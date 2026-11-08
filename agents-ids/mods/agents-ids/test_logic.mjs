@@ -1,6 +1,6 @@
 // Self-check for agents-ids: node mods/agents-ids/test_logic.mjs
 import assert from "node:assert/strict";
-import { closeFacts, sameTerminal, doingLine, hideSession, recentSessions, rememberSessions, resumeArgv, shortSid } from "./extras.mjs";
+import { closeFacts, sameTerminal, doingLine, hideSession, recentSessions, rememberSessions, resumeArgv, resumeSpace, shortSid } from "./extras.mjs";
 
 const identity = { address: "t1", state: "live", created_ms: 7, labels: { "agent.session": "one" } };
 assert.equal(sameTerminal(identity, identity), true);
@@ -35,6 +35,8 @@ assert.equal(resumeArgv("vim", "abcd1234"), null);
 assert.equal(resumeArgv("claude", "x; rm -rf ~"), null); // never typed into a shell
 assert.equal(resumeArgv("claude", "$(id)"), null);
 assert.equal(resumeArgv(undefined, "abcd1234"), null);
+assert.equal(resumeArgv("__proto__", "abcd1234"), null); // labels are untrusted
+assert.equal(resumeArgv("constructor", "abcd1234"), null);
 
 const all = [
   { address: "t1", state: "live", agent: "zsh", labels: { "agent.app": "claude", "agent.session": "aaaa1111" }, status_ms: 10 },
@@ -55,9 +57,7 @@ assert.equal(rememberSessions(store, all, listed, 30000), store); // running, bu
 assert.equal(rememberSessions(store, all, listed, 70000).cccc3333.seen, 70000);
 const recent = recentSessions(all, listed, store);
 assert.deepEqual(recent.map((r) => r.address), ["t2", "t1", "t7"]); // codex and opencode run now; newest first
-assert.deepEqual(recent[0], { sid: "bbbb2222", app: "pi", address: "t2", cwd: "/w", space: "s1", seen: 30, atShell: false, argv: ["pi", "--session", "bbbb2222"] });
-assert.equal(recent[1].atShell, true);
-assert.equal(recent[2].atShell, false); // never typed into vim
+assert.deepEqual(recent[0], { sid: "bbbb2222", app: "pi", address: "t2", cwd: "/w", space: "s1", seen: 30, argv: ["pi", "--session", "bbbb2222"] });
 assert.equal(recentSessions(all, listed, store, 1).length, 1);
 // Resumed in a new terminal: the same id runs again, so it leaves the list.
 const resumed = [...all, { address: "t9", state: "live", agent: "pi", status: "working", labels: { "agent.app": "pi", "agent.session": "bbbb2222" } }];
@@ -68,6 +68,18 @@ assert.equal(hideSession(store, "nope"), store);
 assert.ok(!recentSessions(all, listed, rememberSessions(hid, all, listed, 200)).some((r) => r.sid === "aaaa1111"));
 const again = [{ ...all[0], agent: "claude", status: "working" }, ...all.slice(1)];
 assert.ok(!rememberSessions(hid, again, listed, 70000).aaaa1111.hidden);
+// A hidden one stays hidden when its labelled shell changes folder (it didn't run again).
+const moved = [{ ...all[0], cwd: "/elsewhere", labels: { ...all[0].labels, "herdr.space": "s9" } }, ...all.slice(1)];
+assert.ok(rememberSessions(hid, moved, listed, 200).aaaa1111.hidden);
+// A remote terminal's space label gets its machine prefix, as spaces() ids have.
+const remote = [{ address: "lap/t2", state: "live", agent: "zsh", labels: { "agent.app": "pi", "agent.session": "ffff6666", "herdr.space": "s3" }, status_ms: 9 }];
+assert.equal(rememberSessions({}, remote, new Set(), 100).ffff6666.space, "lap/s3");
+// Resume opens on the session's own machine: its space, else any space there, never a local one.
+const sps = [{ id: "s3", active: true }, { id: "lap/s1", machine: "lap" }, { id: "lap/s3", machine: "lap" }];
+assert.equal(resumeSpace(sps, { address: "lap/t2", space: "lap/s3" }), "lap/s3");
+assert.equal(resumeSpace(sps, { address: "lap/t2", space: "s3" }), "lap/s1"); // saved before 0.4.2, unprefixed
+assert.equal(resumeSpace(sps, { address: "vps/t1", space: "s3" }), null);      // no space on vps here
+assert.equal(resumeSpace(sps, { address: "t2", space: "gone" }), "s3");
 // Old ones age out; at most 20 are kept.
 assert.deepEqual(rememberSessions({ old1: { sid: "old1", app: "pi", address: "t0", seen: 0 } }, [], new Set(), 15 * 86400000), {});
 const many = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`ssss${i}xx`, { sid: `ssss${i}xx`, app: "pi", address: `t${i}`, seen: 1000 + i }]));

@@ -50,10 +50,10 @@ const RESUME = {
  *  into a shell). */
 export function resumeArgv(app, id) {
   const key = (app ?? "").toLowerCase().replace(/^.*\//, "").replace(/-code$/, "");
-  return RESUME[key] && /^[\w.-]{4,128}$/.test(id ?? "") ? RESUME[key](id) : null;
+  // agents-ids: own keys only, so a label like `__proto__` can't reach Object.prototype.
+  return Object.hasOwn(RESUME, key) && /^[\w.-]{4,128}$/.test(id ?? "") ? RESUME[key](id) : null;
 }
 
-const SHELLS = new Set(["sh", "bash", "dash", "zsh", "fish", "nu", "ksh"]);
 const KEEP = 20;
 const DAYS = 14;
 
@@ -64,8 +64,23 @@ const running = (k, agentAddresses) => agentAddresses.has(k.address) || (k.state
 const entry = (k) => {
   const app = k.labels?.["agent.app"];
   const sid = k.labels?.["agent.session"];
-  return resumeArgv(app, sid) ? { sid, app, address: k.address, cwd: k.cwd ?? null, space: k.labels?.["herdr.space"] ?? null } : null;
+  // herdr.space is the id on the terminal's own machine; spaces() ids carry a `machine/` prefix for remote ones.
+  const space = k.labels?.["herdr.space"];
+  const m = machineOf(k.address);
+  return resumeArgv(app, sid) ? { sid, app, address: k.address, cwd: k.cwd ?? null, space: space ? (m ? `${m}/${space}` : space) : null } : null;
 };
+
+/** The machine an address lives on (`vps/t7` -> `vps`), or null for this one. */
+export const machineOf = (address) => (address?.includes("/") ? address.split("/")[0] : null);
+
+/** Where Resume opens a session: its own space when it still exists, else any space on the same
+ *  machine (an entry saved before 0.4.2 has an unprefixed space id); null when that machine has no
+ *  space here, since a session only resumes on the machine that holds it. */
+export function resumeSpace(spaceList, r) {
+  const m = machineOf(r.address);
+  const same = spaceList.filter((s) => (s.machine ?? null) === m);
+  return (same.find((s) => s.id === r.space) ?? same.find((s) => s.active) ?? same[0])?.id ?? null;
+}
 
 /** The remembered sessions (sid -> entry with `seen` ms) updated from the terminals now listed,
  *  so a session stays resumable after its terminal is gone, across restarts. The same object back
@@ -79,7 +94,8 @@ export function rememberSessions(store, all, agentAddresses, now) {
     const old = next[e.sid];
     // Running: seen now, but at most once a minute (each change is a localStorage write).
     const seen = running(k, agentAddresses) ? (old && now - old.seen < 60000 ? old.seen : now) : old?.seen ?? k.status_ms ?? now;
-    if (old && old.seen === seen && old.address === e.address && old.cwd === e.cwd && old.space === e.space) continue;
+    // Rewrite only when seen moves: an ended session is history, and its rewrite would drop `hidden`.
+    if (old && old.seen === seen) continue;
     next[e.sid] = { ...e, seen };
     changed = true;
   }
@@ -94,18 +110,12 @@ export function rememberSessions(store, all, agentAddresses, now) {
 export const hideSession = (store, sid) => (store[sid] ? { ...store, [sid]: { ...store[sid], hidden: true } } : store);
 
 /** Agent sessions that ended and can be resumed, newest first, at most `max`: remembered ones
- *  whose agent isn't running anywhere now. `atShell`: the terminal is open at a bare shell, so
- *  Resume can type the command there; otherwise it opens a new tab. */
+ *  whose agent isn't running anywhere now. */
 export function recentSessions(all, agentAddresses, store, max = 5) {
-  const byAddress = new Map(all.map((k) => [k.address, k]));
   const runningSids = new Set(all.filter((k) => running(k, agentAddresses)).map((k) => k.labels?.["agent.session"]).filter(Boolean));
   return Object.values(store)
     .filter((e) => !e.hidden && !runningSids.has(e.sid) && resumeArgv(e.app, e.sid))
     .sort((a, b) => b.seen - a.seen)
     .slice(0, max)
-    .map((e) => {
-      const k = byAddress.get(e.address);
-      const here = k?.labels?.["agent.session"] === e.sid;
-      return { ...e, atShell: here && k.state === "live" && SHELLS.has(k.agent), argv: resumeArgv(e.app, e.sid) };
-    });
+    .map((e) => ({ ...e, argv: resumeArgv(e.app, e.sid) }));
 }

@@ -50,7 +50,12 @@ def _env() -> dict:
         bound = None
     env = dict(os.environ)
     if bound:
-        for k in ("PATH", "HC_TERMINAL_ID", "HC_TERMINAL_SOCKET"):
+        if bound.get("PATH"):
+            env["PATH"] = bound["PATH"]
+        # The shared gateway may have been started in a Herdr terminal; a client's own terminal (or
+        # none, outside Herdr) is the only one its session may label.
+        for k in ("HC_TERMINAL_ID", "HC_TERMINAL_SOCKET"):
+            env.pop(k, None)
             if bound.get(k):
                 env[k] = bound[k]
     return env

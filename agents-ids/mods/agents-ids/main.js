@@ -8,8 +8,8 @@
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, hc, exec } from "herdr";
-import { closeFacts, sameTerminal, doingLine, hideSession, recentSessions, rememberSessions, shortSid } from "./extras.mjs";
+import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, exec } from "herdr";
+import { closeFacts, sameTerminal, doingLine, hideSession, machineOf, recentSessions, rememberSessions, resumeSpace, shortSid } from "./extras.mjs";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -189,15 +189,14 @@ export default class Agents extends View {
     run("terminal.peek", { terminal: addr });
   }
 
-  // An agent session that ended: at a bare shell, the command is typed there; otherwise (finished,
-  // or another program in front) a new tab in its space and folder. argv holds plain words only.
+  // agents-ids: an ended session reopens in a new tab, never typed into its old terminal (that would
+  // submit whatever half-typed line is there), on its own machine, in its folder if that still exists.
   resume(r) {
-    if (r.atShell) {
-      hc(["send", r.address, r.argv.join(" ")]).then(() => run("pane.focus", { terminal: r.address })).catch(() => {});
-    } else {
-      const space = spaces().some((s) => s.id === r.space) ? r.space : undefined;
-      run("tab.new", { space, folder: r.cwd ?? undefined, argv: r.argv });
-    }
+    const space = resumeSpace(spaces(), r);
+    if (!space) return; // shortcut: its machine has no space open here, so nothing happens; show why if it bites.
+    const open = (folder) => run("tab.new", { space, folder, argv: r.argv });
+    if (!r.cwd) return open(undefined);
+    exec("test", ["-d", r.cwd], { on: machineOf(r.address) }).then((x) => open(x.code === 0 ? r.cwd : undefined), () => open(undefined));
   }
 
   recentRow(t, r) {
@@ -211,7 +210,7 @@ export default class Agents extends View {
       .items_center()
       .text_size(12)
       .hover((s) => s.bg(t.hover))
-      .tooltip(`${r.argv.join(" ")}\nin ${r.atShell ? `terminal ${r.address}` : `a new tab${r.cwd ? `, ${r.cwd}` : ""}`}\nsession ${r.sid}, last in ${r.address}\nctrl-click: copy session id`)
+      .tooltip(`${r.argv.join(" ")}\nin a new tab${r.cwd ? `, ${r.cwd}` : ""}\nsession ${r.sid}, last in ${r.address}\nctrl-click: copy session id`)
       .on_click((e, cx) => e?.modifiers?.control && cx.write_to_clipboard(r.sid))
       .child(div().flex_none().text_color(t.muted).child(r.app))
       // The folder says which work it was; a closed terminal's address may belong to another by now.
