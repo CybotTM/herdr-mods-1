@@ -8,6 +8,21 @@ a version (see [AGENTS.md](AGENTS.md#releases)).
 
 ## [Unreleased]
 
+### Fixed
+
+- **integrations (Pi/PiG):** a PiG session was labeled `agent.app=pi`, so agents-ids resumed it with
+  `pi --session` instead of `pig --session`; PiG is now detected through its extension runtime
+  (`PIG_EXT_HOST_INFO`), which plain Pi doesn't set.
+
+### Changed
+
+- **integrations (Pi/PiG):** a settled agent now reads `waiting for you` instead of `done`, since
+  settling in the TUI means sitting at the prompt.
+- **integrations (Pi/PiG):** on Linux the extension checks once that it owns the terminal's
+  foreground job (reading `/proc` itself) and then labels through `hc` directly, instead of spawning
+  the `agent-session-label` helper on every tool call; the helper remains for macOS and for agents
+  that don't own the foreground.
+
 ## [0.4.1] - 2026-11-08
 
 ### Fixed
