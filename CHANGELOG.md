@@ -8,6 +8,8 @@ a version (see [AGENTS.md](AGENTS.md#releases)).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-08
+
 ### Fixed
 
 - **agents-ids:** an agent on another machine showed `machine/t5c` with no room left for its session
@@ -114,7 +116,8 @@ First public release.
   OpenCode (TUI plugin), all through `integrations/bin/agent-session-label`.
 - `install.sh` (`--mods-only`, `--watch`) and the `main-plus` layout.
 
-[Unreleased]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.2.0...v0.2.1
