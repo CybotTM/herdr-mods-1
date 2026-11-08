@@ -24,7 +24,9 @@ checkout, drag to reorder), with:
   `› n tabs put away`; click to unfold.
 - **Ports**, `:5173` chips in `accent` at the end of the second line (or after the branch on a worktree
   row): TCP ports that programs running in the space's folder listen on. Hover: program and address;
-  click: opens `http://localhost:5173` (`http://<machine>:5173` for a remote space) in the browser.
+  click: opens `http://localhost:5173` (`http://<machine>:5173` for a remote space) in the browser. A
+  WSL machine under the Windows app keeps `localhost` (WSL forwards it; its Herdr name resolves
+  nowhere), told by `microsoft`/`WSL` in its `/proc/sys/kernel/osrelease`, read once per machine.
 - **Pull request**, `#42` before the ports: the newest PR from the space's branch, green when open, `dim`
   when draft, `ansi5` when merged; closed-unmerged ones are left out. Red when a check failed, amber
   when CI has been queued for over 45 minutes; the tooltip names the failing checks. Click opens it on GitHub.
@@ -50,9 +52,9 @@ a rail nothing is polled: the rail shows none of it.
 
 **Built from:** a copy of the shipped `spaces` mod (herdr-app 0.1.12). Its own helpers are in
 `extras.mjs` (pure: `tilde`, `tabLabel`, `spaceName`, `changedCount`, `PORTS_SCRIPT`, `parseListeners`,
-`assignPorts`, `prsByBranch`, CPU/memory parsing). Uses `exec("sh", ["-c", PORTS_SCRIPT], { on })`,
-`exec("gh", …)`, `exec("xdg-open" | "open", [url])`, `readTextFile("/proc/…", { on })`, `spaces()`, `machines()`,
-`panes()` (tab titles, agent names), `exec("git", ["status", "--porcelain=v2", "--branch"])`,
+`assignPorts`, `portUrl`, `isWsl`, `prsByBranch`, CPU/memory parsing). Uses `exec("sh", ["-c", PORTS_SCRIPT], { on })`,
+`exec("gh", …)`, `cx.open_url(url)` in the click handlers, `window()?.platform`, `readTextFile("/proc/…", { on })`,
+`spaces()`, `machines()`, `panes()` (tab titles, agent names), `exec("git", ["status", "--porcelain=v2", "--branch"])`,
 `readTextFile(appHome() + "/view.json")` for `recent` (no herdr function returns it), `run("tab.select")`,
 `run("space.new")`, and icons from the shipped `workspace-chrome` mod (`spinner.svg`, `clock.svg`,
 `chevron-right.svg`, `chevron-down.svg`).

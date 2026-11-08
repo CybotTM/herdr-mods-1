@@ -8,6 +8,13 @@ a version (see [AGENTS.md](AGENTS.md#releases)).
 
 ## [Unreleased]
 
+### Fixed
+
+- **spaces-plus:** clicking a port or pull request chip did nothing in the Windows app; links now open
+  through the app itself, on every platform, without `xdg-open` or `open`.
+- **spaces-plus:** a port chip on a WSL machine opened `http://<machine name>:<port>`, which Windows
+  can't resolve; under the Windows app it now opens `http://localhost:<port>`, which WSL forwards.
+
 ## [0.5.0] - 2026-11-08
 
 ### Added

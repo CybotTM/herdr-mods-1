@@ -39,6 +39,13 @@ assert.equal(ports.get("/home/alex"), undefined);
 assert.equal(portUrl({ host: "localhost", port: 5173 }, null), "http://localhost:5173");
 assert.equal(portUrl({ host: "localhost", port: 5173 }, "vps"), "http://vps:5173");
 assert.equal(portUrl({ host: "100.64.0.2", port: 9000 }, "vps"), "http://100.64.0.2:9000");
+// A WSL machine seen from a Windows app: its localhost is forwarded, its Herdr name resolves nowhere.
+assert.equal(portUrl({ host: "localhost", port: 5173 }, "dev", true), "http://localhost:5173");
+assert.equal(portUrl({ host: "172.20.1.5", port: 5173 }, "dev", true), "http://172.20.1.5:5173");
+assert.equal(extras.isWsl("6.6.87.2-microsoft-standard-WSL2\n"), true);
+assert.equal(extras.isWsl("4.4.0-19041-Microsoft\n"), true); // WSL1
+assert.equal(extras.isWsl("6.8.0-45-generic\n"), false);
+assert.equal(extras.isWsl(null), false);
 
 // Pull requests: the newest per branch; closed-unmerged ones go.
 const prs = prsByBranch(JSON.stringify([
