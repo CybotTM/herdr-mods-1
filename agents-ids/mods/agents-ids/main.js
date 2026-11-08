@@ -9,7 +9,7 @@
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, exec } from "herdr";
-import { closeFacts, sameTerminal, doingLine, hideSession, machineOf, recentSessions, rememberSessions, resumeSpace, shortSid } from "./extras.mjs";
+import { closeFacts, sameTerminal, doingLine, hideSession, machineOf, projectOf, recentSessions, rememberSessions, resumeSpace, shortSid } from "./extras.mjs";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -55,6 +55,7 @@ const kidStatus = (k, listed) => {
 const SORTS = [
   { id: "priority", label: "Priority", icon: "clock" },
   { id: "grouped", label: "Grouped by space", icon: "layers" },
+  { id: "project", label: "Grouped by project", icon: "folder" }, // agents-ids
 ];
 const sortOf = () => SORTS.find((s) => s.id === shared("agents.sort")) ?? SORTS[0];
 const SECTION = { 4: "Needs you", 3: "Done", 2: "Working", 1: "Idle" };
@@ -94,6 +95,9 @@ export default class Agents extends View {
     }
     if (props()?.sortMenu) return;
     this.folded = new Set();
+    // agents-ids: each folder's git common dir (null: not a repo, or not asked yet), for "Grouped by project".
+    // shortcut: never re-asked, so a folder that becomes a repo later groups by folder until restart.
+    this.repos = new Map();
     // Each agent's last state and when it changed (ms), kept across restarts.
     this.changed = JSON.parse(localStorage.getItem("changed") ?? "{}");
     this.pendingPins = JSON.parse(localStorage.getItem("pins") ?? "[]");
@@ -364,6 +368,29 @@ export default class Agents extends View {
     const byPriority = sort.id === "priority";
     const urgency = new Map(list.map((a) => [a.address, Math.max(this.rank(a), ...this.tree(all, a.address).map((s) => RANK[kidStatus(s.t, this.listed)] ?? 0))]));
     const rankOf = (a) => urgency.get(a.address);
+    // agents-ids: "Grouped by project" asks git once per folder; the stable sort keeps space order inside a project.
+    const byProject = sort.id === "project";
+    const project = new Map();
+    if (byProject) {
+      const cwds = new Map(all.map((k) => [k.address, k.cwd ?? ""]));
+      for (const a of list) {
+        const on = machineOf(a.address), cwd = cwds.get(a.address) ?? "", key = `${on ?? ""}:${cwd}`;
+        if (cwd && !this.repos.has(key)) {
+          this.repos.set(key, null);
+          cx.spawn(async (cx) => {
+            try {
+              const r = await exec("git", ["-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"], { on });
+              if (r.code === 0 && r.stdout.trim()) { this.repos.set(key, r.stdout.trim()); cx.notify(); }
+            } catch {}
+          });
+        }
+        project.set(a.address, projectOf(on, cwd, this.repos.get(key)));
+      }
+      list = [...list].sort((x, y) => {
+        const p = project.get(x.address), q = project.get(y.address);
+        return p.name.localeCompare(q.name) || p.key.localeCompare(q.key);
+      });
+    }
     if (byPriority) list = [...list].sort((x, y) => rankOf(y) - rankOf(x) || this.since(y) - this.since(x) || y.seq - x.seq);
     const pinned = list.filter((a) => a.pinned);
     const rest = list.filter((a) => !a.pinned);
@@ -458,7 +485,7 @@ export default class Agents extends View {
         .child(svg(`mods/workspace-chrome/${isPinned ? "pin-off" : "pin"}.svg`).size(13));
       // Under a space header the space goes without saying; an automatic tab number says nothing.
       // Without a space header above (priority, pinned) the row names its space.
-      const full = byPriority || isPinned;
+      const full = byPriority || byProject || isPinned; // agents-ids: a project spans spaces, so its rows name theirs
       const name = full ? a.space_name || label(a) : more ?? (/^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a));
       const sid = this.sessions.get(a.address);
       // agents-ids: the activity label is optional for integrations that don't report it.
@@ -519,9 +546,9 @@ export default class Agents extends View {
     const groups = pinned.length ? [{ id: "pinned", label: "Pinned", status: null, members: pinned }] : [];
     for (const a of rest) {
       const r = rankOf(a) || RANK.idle;
-      const id = byPriority ? `sec-${r}` : `sp-${a.space}`;
+      const id = byPriority ? `sec-${r}` : byProject ? `pr-${project.get(a.address).key}` : `sp-${a.space}`;
       if (groups.at(-1)?.id === id) groups.at(-1).members.push(a);
-      else groups.push({ id, label: byPriority ? SECTION[r] : a.space_name || "", status: byPriority ? SECTION_STATUS[r] : null, members: [a] });
+      else groups.push({ id, label: byPriority ? SECTION[r] : byProject ? project.get(a.address).name : a.space_name || "", status: byPriority ? SECTION_STATUS[r] : null, members: [a] });
     }
 
     // A group's header; it folds the group. Folded, it says how many and the most urgent state.

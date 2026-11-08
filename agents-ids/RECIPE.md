@@ -22,6 +22,12 @@ except each row is 44px tall instead of 30px and has two lines:
 An X on each agent row opens a check of what closing it would lose (still working, uncommitted changes,
 sub-agents) before it ends the terminal; it refuses if the terminal changed meanwhile.
 
+The sort menu has a third choice, **Grouped by project**: one header per git repository, named after
+the repo's folder, with its worktrees and subfolders under the main repo (`git rev-parse
+--git-common-dir` on the terminal's machine, asked once per folder). A folder outside git is its own
+group (`~/notes`). Rows name their space, since one project can span several; a remote project's header
+starts with its machine (`vps: acme`).
+
 **Recent sessions**, a foldable group after the others (header like the others, `Recent sessions n`):
    28px rows of the program name (`muted`), `<folder> · <short id>` (`dim`) and a `Resume` pill (10.5px
    semibold, `accent` text on a 12% tint of it), the age (`3h`, `dim`) and an X. Newest first; 5, then

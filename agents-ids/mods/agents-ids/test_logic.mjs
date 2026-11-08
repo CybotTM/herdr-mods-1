@@ -1,6 +1,6 @@
 // Self-check for agents-ids: node mods/agents-ids/test_logic.mjs
 import assert from "node:assert/strict";
-import { closeFacts, sameTerminal, doingLine, hideSession, recentSessions, rememberSessions, resumeArgv, resumeSpace, shortSid } from "./extras.mjs";
+import { closeFacts, sameTerminal, doingLine, hideSession, projectOf, recentSessions, rememberSessions, resumeArgv, resumeSpace, shortSid } from "./extras.mjs";
 
 const identity = { address: "t1", state: "live", created_ms: 7, labels: { "agent.session": "one" } };
 assert.equal(sameTerminal(identity, identity), true);
@@ -84,4 +84,14 @@ assert.equal(resumeSpace(sps, { address: "t2", space: "gone" }), "s3");
 assert.deepEqual(rememberSessions({ old1: { sid: "old1", app: "pi", address: "t0", seen: 0 } }, [], new Set(), 15 * 86400000), {});
 const many = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`ssss${i}xx`, { sid: `ssss${i}xx`, app: "pi", address: `t${i}`, seen: 1000 + i }]));
 assert.equal(Object.keys(rememberSessions(many, [], new Set(), 2000)).length, 20);
+// A worktree and its main repo are one project; a folder outside git is its own, home shown as ~.
+const main = projectOf(null, "/home/alex/code/acme", "/home/alex/code/acme/.git");
+assert.deepEqual(main, { key: ":/home/alex/code/acme", name: "acme" });
+assert.deepEqual(projectOf(null, "/home/alex/code/acme/.worktrees/fix-1", "/home/alex/code/acme/.git"), main);
+assert.equal(projectOf(null, "/srv/acme.git", "/srv/acme.git").name, "acme");
+assert.deepEqual(projectOf(null, "/home/alex/notes/", null), { key: ":/home/alex/notes", name: "~/notes" });
+assert.equal(projectOf(null, "/home/alex", null).name, "~");
+assert.equal(projectOf(null, "/", null).name, "/");
+assert.equal(projectOf(null, null, null).name, "unknown folder");
+assert.deepEqual(projectOf("vps", "/home/alex/code/acme", "/home/alex/code/acme/.git"), { key: "vps:/home/alex/code/acme", name: "vps: acme" });
 console.log("ok");

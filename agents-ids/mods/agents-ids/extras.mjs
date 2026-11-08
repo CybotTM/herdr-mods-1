@@ -73,6 +73,20 @@ const entry = (k) => {
 /** The machine an address lives on (`vps/t7` -> `vps`), or null for this one. */
 export const machineOf = (address) => (address?.includes("/") ? address.split("/")[0] : null);
 
+/** "Grouped by project": the git repo a folder is in, with worktrees counted under their main repo
+ *  (`commonDir` is `git rev-parse --path-format=absolute --git-common-dir`); a folder outside git, or
+ *  not checked yet, is its own project. `key` is machine:path (a hostname holds no colon), so two
+ *  machines' same paths stay apart. */
+export function projectOf(machine, cwd, commonDir) {
+  const at = machine ? `${machine}: ` : "";
+  if (commonDir) {
+    const root = commonDir.replace(/\/+$/, "").replace(/\/\.git$/, "");
+    return { key: `${machine ?? ""}:${root}`, name: at + root.split("/").pop().replace(/\.git$/, "") };
+  }
+  const dir = (cwd ?? "").replace(/(.)\/+$/, "$1");
+  return { key: `${machine ?? ""}:${dir}`, name: at + (dir.replace(/^\/(home\/[^/]+|Users\/[^/]+|root)(?=\/|$)/, "~") || "unknown folder") };
+}
+
 /** Where Resume opens a session: its own space when it still exists, else any space on the same
  *  machine (an entry saved before 0.4.2 has an unprefixed space id); null when that machine has no
  *  space here, since a session only resumes on the machine that holds it. */
