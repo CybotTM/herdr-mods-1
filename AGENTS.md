@@ -46,8 +46,8 @@ on herdr.dev (a layout package would need its own copies of the mods); it lives 
   (`claude`, `codex`, `pi`, `pig`, `opencode`, `hermes`) are what other agents and tools write. Don't
   rename them; add new labels instead.
 - **Never type untrusted text into a shell.** Labels can be written by any program. Resume runs only
-  IDs matching `^[\w.-]{4,128}$` (`resumeArgv` in `agents-ids/extras.mjs`) and types into a terminal only
-  when its foreground program is a bare shell; otherwise it opens a new tab with an argv. `exec` takes an
+  IDs matching `^[\w.-]{4,128}$` for known programs (`resumeArgv` in `agents-ids/extras.mjs`), always as
+  the argv of a new tab; nothing is ever typed into a terminal. `exec` takes an
   argument list; the only `sh -c` scripts are constants in the code.
 - **A hook must never break or slow an agent.** `agent-session-label` exits 0 on any error, does
   nothing outside herdr-app (no `HC_TERMINAL_ID`), and labels only when the agent is (a direct child of)
@@ -85,7 +85,7 @@ Run all of these before every commit; all must pass:
 
 ```sh
 for m in agents-ids spaces-plus sysstat sessions usage; do node $m/mods/$m/test_logic.mjs && herdr-app check $m/mods/$m; done
-python3 -I tests/test_label.py && python3 -I tests/test_hermes_plugin.py && python3 -I tests/test_sessions_search.py
+python3 -I tests/test_label.py && python3 -I tests/test_hermes_plugin.py && python3 -I tests/test_sessions_search.py && node tests/test_pi.mjs
 shellcheck -S warning install.sh scripts/demo.sh
 ```
 
