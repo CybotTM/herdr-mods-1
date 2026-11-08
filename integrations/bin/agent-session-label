@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 SHELLS = {"sh", "bash", "dash", "zsh", "fish", "env"}
 
@@ -60,6 +61,13 @@ def leader(pid: int) -> int:
 def main(argv: list[str]) -> int:
     term = os.environ.get("HC_TERMINAL_ID", "").strip()
     if not term:
+        return 0
+    if len(argv) >= 4 and argv[1] == "--doing":
+        text = " ".join(argv[2].split())[:60]
+        pid = int(argv[3])
+        if text and leader(pid):
+            subprocess.run(["hc", "label", term, f"agent.doing={text}", f"agent.doing.since={int(time.time())}"],
+                           timeout=3, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
         return 0
     sid = argv[1] if len(argv) > 1 else ""
     if not sid and not sys.stdin.isatty():
