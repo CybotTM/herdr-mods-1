@@ -44,6 +44,11 @@ calls.clear()
 m.main(["x", "sid-1", "-", "opencode"]); assert calls[0][-1] == "agent.app=opencode"  # "-": find the agent
 calls.clear(); m.os.getppid = lambda: 40
 m.main(["x", "sid-2"]); assert calls == []
+calls.clear(); m.time.time = lambda: 1234
+m.main(["x", "--doing", "running: git", "20"])
+assert calls == [["hc", "label", "t9", "agent.doing=running: git", "agent.doing.since=1234"]]
+calls.clear()
+m.main(["x", "--doing", "thinking", "41"]); assert calls == []
 calls.clear(); del os.environ["HC_TERMINAL_ID"]
 m.main(["x", "sid-3", "20"]); assert calls == []
 print("ok")

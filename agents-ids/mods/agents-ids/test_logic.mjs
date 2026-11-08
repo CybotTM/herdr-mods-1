@@ -1,6 +1,24 @@
 // Self-check for agents-ids: node mods/agents-ids/test_logic.mjs
 import assert from "node:assert/strict";
-import { hideSession, recentSessions, rememberSessions, resumeArgv, shortSid } from "./extras.mjs";
+import { closeFacts, sameTerminal, doingLine, hideSession, recentSessions, rememberSessions, resumeArgv, shortSid } from "./extras.mjs";
+
+const identity = { address: "t1", state: "live", created_ms: 7, labels: { "agent.session": "one" } };
+assert.equal(sameTerminal(identity, identity), true);
+assert.equal(sameTerminal(identity, null), false);
+assert.equal(sameTerminal(identity, { ...identity, labels: { "agent.session": "two" } }), false);
+assert.equal(sameTerminal(identity, { ...identity, created_ms: 8 }), false);
+assert.equal(sameTerminal({ ...identity, created_ms: undefined }, { ...identity, created_ms: undefined }), true);
+assert.equal(sameTerminal({ ...identity, created_ms: undefined, labels: {} }, { ...identity, created_ms: undefined, labels: {} }), false);
+
+assert.deepEqual(closeFacts("working", 2, null), ["Agent: working", "Git: 2 uncommitted changes", "Sub-agents: unknown", "Background processes: unknown"]);
+assert.deepEqual(closeFacts("idle", 0, 0), ["Agent: idle", "Git: no uncommitted changes", "Sub-agents: none", "Background processes: unknown"]);
+assert.equal(closeFacts(null, null, 1)[1], "Git: unknown");
+
+const doing = { "agent.doing": "running tests", "agent.doing.since": "1000" };
+assert.deepEqual(doingLine(doing, "working", 1000 * 1000 + 42 * 60000), { text: "running tests · 42m", stale: true, tip: "no change for 42m" });
+assert.equal(doingLine(doing, "idle", 1000 * 1000 + 42 * 60000).stale, false);
+assert.equal(doingLine({}, "working", 0), null);
+assert.deepEqual(doingLine({ "agent.doing": "thinking", "agent.doing.since": "bad" }, "working", 5000000), { text: "thinking", stale: false, tip: "" });
 
 assert.equal(shortSid("local-e257df53a91b0666d3c2470352eebf013ed731f57b3b98d1f7314aea1783db1d"), "e257df53");
 assert.equal(shortSid("d00d75b6-815e-4fca-b4b0-637a75b0ffd9"), "d00d75b6");        // Claude Code (v4)

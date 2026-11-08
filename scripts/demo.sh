@@ -9,7 +9,7 @@
 #
 # DEMO (default ~/.cache/herdr-mods-demo) holds everything. The PR badge comes from a stub `gh`
 # in $DEMO/bin (the demo repos have no GitHub remote); ports, git and session ids are real.
-# Agents: Claude Code and Pi when installed (Claude asks once to trust each demo folder).
+# Fake agents report working without loading a person's agent configuration or contacting a model.
 # Needs herdr-app, hc, git, python3; Pillow for the crops.
 set -euo pipefail
 
@@ -40,7 +40,6 @@ demo_env() {
 }
 
 do_() { herdr-app "do" "$@" >/dev/null; }
-have() { command -v "$1" >/dev/null; }
 
 # repo <dir> <commit message>...: a git repo with one commit per message, made once.
 repo() {
@@ -81,21 +80,19 @@ make_repos() {
 echo '[{"number":42,"headRefName":"feature/search","state":"OPEN","isDraft":false,"url":"https://github.com/acme/acme-api/pull/42"}]'
 GH
   chmod +x "$DEMO/bin/gh"
+  # Fake agents never read the person's agent configuration or contact a model.
+  cat >"$DEMO/bin/pi" <<'AGENT'
+#!/bin/sh
+printf '\033]7501;state=working:app=pi\033\\'
+while :; do sleep 60; done
+AGENT
+  chmod +x "$DEMO/bin/pi"
+  cp "$DEMO/bin/pi" "$DEMO/bin/claude"
 }
 
 # space <name> <folder> [argv json]: a space whose first terminal runs argv (a shell by default).
 space() {
   do_ space.new "{\"name\":\"$1\",\"folder\":\"$2\"${3:+,\"argv\":$3}}"
-}
-
-# trust <folder>: answer Claude Code's "trust this folder?" for the demo terminal there.
-trust() {
-  local t
-  for _ in $(seq 20); do
-    t="$(hc ls --json | python3 -c 'import json,sys; print(next((t["address"] for t in json.load(sys.stdin)["terminals"] if t["cwd"] == sys.argv[1]), ""))' "$1")"
-    if [ -n "$t" ] && hc read "$t" 2>/dev/null | grep -q "trust this folder"; then hc keys "$t" down enter >/dev/null; return; fi
-    sleep 0.5
-  done
 }
 
 start() {
@@ -107,6 +104,7 @@ start() {
     for _ in $(seq 40); do herdr-app status >/dev/null 2>&1 && break; sleep 0.5; done
     herdr-app status >/dev/null 2>&1 || { echo "The demo window didn't start; see $DEMO/app.log" >&2; exit 1; }
   fi
+  # Demo stays isolated: copy this checkout directly, never run the installer.
   mkdir -p "$HERDR_APP_HOME/mods" "$HERDR_APP_HOME/layouts"
   local m
   for m in agents-ids spaces-plus sysstat sessions usage; do
@@ -145,16 +143,20 @@ PY
   if herdr-app ls | grep -q '"acme-api"'; then
     echo "Demo spaces already open."
   else
-    space acme-api "$w/acme-api" "$(have pi && echo '["pi"]')"
-    space search "$w/acme-api/.worktrees/search" "$(have claude && echo '["claude"]')"
-    have claude && trust "$w/acme-api/.worktrees/search"
+    space acme-api "$w/acme-api" "[\"$DEMO/bin/pi\"]"
+    space search "$w/acme-api/.worktrees/search" "[\"$DEMO/bin/claude\"]"
     space web-dashboard "$w/web-dashboard" '["python3","-m","http.server","5173","--bind","127.0.0.1"]'
-    space docs-site "$w/docs-site" "$(have pi && echo '["pi"]')"
+    space docs-site "$w/docs-site" "[\"$DEMO/bin/pi\"]"
+  fi
+  # A stale working example exercises the activity line without a real agent.
+  local agent
+  agent="$(hc ls --json | python3 -c 'import json,sys; print(next((t["address"] for t in json.load(sys.stdin)["terminals"] if t.get("cwd") == sys.argv[1]), ""))' "$w/acme-api")"
+  if [ -n "$agent" ]; then
+    hc label "$agent" agent.session=demo-session agent.app=pi 'agent.doing=running: npm test' "agent.doing.since=$(($(date +%s) - 2400))" >/dev/null
   fi
   # Show web-dashboard: its terminal is the demo server, nothing from your own agent setup.
   do_ space.select '{"index":3}'
-  echo "Demo window up. For Recent sessions, quit one agent (docs-site's Pi: Ctrl+C twice, then Ctrl+D),"
-  echo "wait ~10 s for ports and the PR badge, then: scripts/demo.sh shot"
+  echo "Demo window up; fake agents are working. Wait ~10 s for ports and the PR badge, then: scripts/demo.sh shot"
 }
 
 shot() {
