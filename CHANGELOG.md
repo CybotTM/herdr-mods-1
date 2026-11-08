@@ -8,6 +8,24 @@ a version (see [AGENTS.md](AGENTS.md#releases)).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-08
+
+### Added
+
+- **sessions:** a new mod: search past Hermes, Pi and PiG sessions by topic and resume the picked one
+  in a new tab (Enter or click). Bind it to a key, e.g. `"ctrl-shift-s": "mod.open:sessions"`.
+- **usage:** a new status-bar mod showing the busiest AI provider quota (`codex 31%`, red from 90%),
+  with every provider and its reset time on hover, from a command you configure (Kuota's JSON).
+- **agents-ids:** a third line per agent with what it is doing now and for how long; amber when it has
+  been working on the same thing for over 30 minutes.
+- **agents-ids:** an X on each agent row opens a check of what closing would lose (still working,
+  uncommitted changes, sub-agents) before ending the terminal; it refuses if the terminal changed.
+- **spaces-plus:** the pull request badge turns red when a check failed and amber when CI has been
+  queued for over 45 minutes; the tooltip names the failing checks.
+- **spaces-plus:** an unreachable machine shows why (`ssh timeout`, `connection refused`, `host key`)
+  and since when, with the full error on hover.
+- **Integrations:** Hermes and Pi/PiG set the new `agent.doing` and `agent.doing.since` labels.
+
 ## [0.3.0] - 2026-11-04
 
 ### Added
@@ -90,7 +108,8 @@ First public release.
   OpenCode (TUI plugin), all through `integrations/bin/agent-session-label`.
 - `install.sh` (`--mods-only`, `--watch`) and the `main-plus` layout.
 
-[Unreleased]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/DarkoKuzmanovic/herdr-mods/compare/v0.1.0...v0.2.0

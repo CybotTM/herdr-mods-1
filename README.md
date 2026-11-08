@@ -1,16 +1,19 @@
 # herdr-mods
 
-Three mods for the [Herdr desktop app](https://herdr.dev) (herdr-app) that put more of what you need
-into the sidebar: which session each coding agent is running, what changed in each space, and how
-busy the machine is.
+Five mods for the [Herdr desktop app](https://herdr.dev) (herdr-app) that put more of what you need
+in front of you: which session each coding agent is running and what it's doing right now, what changed
+in each space, how its CI is doing, how busy the machine is, how much of your AI quota is left, and a
+search over every past session.
 
-![herdr-app with all three mods](docs/window.png)
+![herdr-app with the mods](docs/window.png)
 
 | Mod | What it adds |
 |---|---|
-| [**agents-ids**](agents-ids/RECIPE.md) | A second line under every agent: terminal address and short session ID (Ctrl-click to copy). *Recent sessions* below, with **Resume** for agents that ended. Claude Code, Codex, Pi, PiG, OpenCode and Hermes, or any agent that sets one label. |
-| [**spaces-plus**](spaces-plus/RECIPE.md) | Git changes, tab count and agent status per space, the active space's tabs, the ports its programs listen on and its branch's pull request (click to open), CPU and memory per machine, recent spaces to reopen. |
+| [**agents-ids**](agents-ids/RECIPE.md) | A second line under every agent: terminal address and short session ID (Ctrl-click to copy). A third line with what the agent is doing now (`running: terminal npm · 4m`), amber when it has been working on the same thing for over 30 minutes. An X on each row checks what closing would lose (still working, uncommitted changes, sub-agents) before it ends the terminal. *Recent sessions* below, with **Resume** for agents that ended. Claude Code, Codex, Pi, PiG, OpenCode and Hermes, or any agent that sets one label. |
+| [**spaces-plus**](spaces-plus/RECIPE.md) | Git changes, tab count and agent status per space, the active space's tabs, the ports its programs listen on and its branch's pull request (click to open; red when a check failed, amber when CI has sat queued over 45 minutes), CPU and memory per machine, why a machine is unreachable and since when, recent spaces to reopen. |
 | [**sysstat**](sysstat/RECIPE.md) | CPU with a one-minute sparkline, memory and AMD GPU in the status bar, for the machine of the space you're looking at. Click for `btop`. |
+| [**sessions**](sessions/RECIPE.md) | A search box over past Hermes, Pi and PiG sessions (title, folder, matching text); Enter resumes the picked one in a new tab. |
+| [**usage**](usage/RECIPE.md) | The busiest AI provider quota in the status bar (`codex 31%`, red from 90%), every provider and its reset time on hover. Reads JSON from a command you set ([Kuota](https://github.com/DarkoKuzmanovic/kuota)'s collector format). |
 
 <p>
   <img src="agents-ids/preview.png" alt="Agents list with terminal addresses, session IDs and recent sessions to resume" height="260">
@@ -37,6 +40,20 @@ herdr-app do layout.switch '{"name":"main-plus"}'
 Prefer your own layout? Clone it and set `content.mod` of the `spaces` and `agents` blocks to
 `spaces-plus` and `agents-ids`; add a `sysstat` block where you want the bar (it docks at the bottom by
 itself the first time Herdr sees it).
+
+`sessions` opens as a dialog; bind a key to it in `~/.config/herdr-app/keys.json` (the installer
+doesn't touch your keys): `"ctrl-shift-s": "mod.open:sessions"`.
+
+`usage` shows nothing until you give it a command in its layout block's props:
+
+```json
+{ "id": "usage", "type": "block", "size": { "px": 130 },
+  "content": { "mod": "usage", "props": { "command": ["node", "/path/to/kuota/collector/cli.js"], "every": 300, "on": "other-machine" } } }
+```
+
+`command` is an argument list (no shell), `every` is seconds between runs (default 300), and `on` runs
+it on another herdr-app machine (default: this one). The command must print `{"providers": [{"id",
+"state", "windows": [{"label", "usedPercent", "resetAt"}]}]}`.
 
 Asking an agent instead? Point it at a mod's folder on GitHub (or its page on
 [herdr.dev/mods](https://herdr.dev/mods)); herdr-app's own `AGENTS.md` tells it how to add a shared mod,
@@ -74,14 +91,18 @@ Resume runs `claude --resume <id>`, `codex resume <id>`, `pi --session <id>` (Pi
 and `.`. It types the command into the agent's old terminal when that is back at a bare shell, and
 otherwise opens a new tab in the same space and folder.
 
+Hermes and Pi/PiG also set `agent.doing` (a short plain line: `thinking`, `running: <tool> [git|npm|…]`,
+`waiting for you`, `done`; never command arguments or paths) and `agent.doing.since` (epoch seconds of
+the last change). Any agent can set them the same way; `agents-ids` shows them as the third line.
+
 To remove a hook, delete its line or file from the places above.
 
 ## Develop
 
 ```sh
 ./install.sh --watch    # copy mods into herdr-app, then re-copy on every save
-for m in agents-ids spaces-plus sysstat; do node $m/mods/$m/test_logic.mjs && herdr-app check $m/mods/$m; done
-python3 -I tests/test_label.py && python3 -I tests/test_hermes_plugin.py
+for m in agents-ids spaces-plus sysstat sessions usage; do node $m/mods/$m/test_logic.mjs && herdr-app check $m/mods/$m; done
+python3 -I tests/test_label.py && python3 -I tests/test_hermes_plugin.py && python3 -I tests/test_sessions_search.py && node tests/test_pi.mjs
 scripts/demo.sh start   # screenshots from a demo window with its own herdr-core; then `shot`, `stop`
 ```
 
@@ -106,7 +127,7 @@ git switch main && git merge upstream   # conflicts show exactly where Herdr and
 ## Requirements
 
 herdr-app 0.1.12 or later, `git`, `rsync`, `python3`. Optional, each feature stays hidden without it:
-`gh` (logged in) for pull request badges, `ss` or `lsof` for ports, `btop`/`htop` for sysstat's click.
+`gh` (logged in) for pull request and CI badges, `ss` or `lsof` for ports, `btop`/`htop` for sysstat's click.
 `sysstat` and the CPU/memory on machine rows read `/proc`, so they show Linux machines only.
 
 ## License
