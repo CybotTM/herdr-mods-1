@@ -26,7 +26,8 @@ checkout, drag to reorder), with:
   row): TCP ports that programs running in the space's folder listen on. Hover: program and address;
   click: opens `http://localhost:5173` (`http://<machine>:5173` for a remote space) in the browser. A
   WSL machine under the Windows app keeps `localhost` (WSL forwards it; its Herdr name resolves
-  nowhere), told by `microsoft`/`WSL` in its `/proc/sys/kernel/osrelease`, read once per machine.
+  nowhere), told by `microsoft`/`WSL` in its `/proc/sys/kernel/osrelease`, read once per machine (no
+  such file, as on macOS, means not WSL; only a failed read is tried again).
 - **Pull request**, `#42` before the ports: the newest PR from the space's branch, green when open, `dim`
   when draft, `ansi5` when merged; closed-unmerged ones are left out. Red when a check failed, amber
   when CI has been queued for over 45 minutes; the tooltip names the failing checks. Click opens it on GitHub.
@@ -66,6 +67,9 @@ a rail nothing is polled: the rail shows none of it.
 - No `gh`, or not logged in, or no GitHub remote: no badge, nothing else changes. Same for `ss`/`lsof`.
 - `ss` sees only your own processes' pids, which is what a space runs anyway.
 - A remote port bound to `127.0.0.1` there can't be opened from here; the tooltip shows the address.
+- The WSL check can't tell a WSL instance on this computer from one on another PC (the mod knows no
+  machine's host), so a WSL machine on another PC also gets `localhost` links, which point at this
+  computer instead.
 - The mod is a copy: when Herdr ships a new `spaces`, merge it (see the repo's README).
 
 **Done when:**

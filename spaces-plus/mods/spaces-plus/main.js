@@ -76,7 +76,7 @@ export default class Spaces extends View {
     this.recent = [];
     this.showSettled = false;
     this.ports = new Map(); // JSON [machine, folder] -> [{ host, port, name }]
-    this.sharesLocalhost = {}; // spaces-plus: machine -> true when its localhost is this computer's (WSL under a Windows app)
+    this.sharesLocalhost = new Map(); // spaces-plus: machine -> true when its localhost is this computer's (WSL under a Windows app)
     this.prs = {}; // repo -> { at, branches: Map branch -> { number, state, draft, url } }
     this.load = {}; // machine ("" here) -> { prev, cpu, mem }
     this.refreshMachines(cx);
@@ -174,10 +174,9 @@ export default class Spaces extends View {
           const r = await exec("sh", ["-c", PORTS_SCRIPT], { on });
           for (const [f, list] of assignPorts(parseListeners(r.stdout), folders)) next.set(JSON.stringify([on, f]), list);
           // spaces-plus: WSL forwards its localhost to Windows, where its Herdr name resolves nowhere.
-          // Asked once per machine; a failed read is asked again next time.
-          if (on && !(on in this.sharesLocalhost) && window()?.platform === "windows") {
-            const release = await readTextFile("/proc/sys/kernel/osrelease", { on }).catch(() => null);
-            if (release !== null) this.sharesLocalhost[on] = isWsl(release);
+          // Asked once per machine: no such file (macOS, BSD) is not WSL; a rejected read is asked again.
+          if (on && !this.sharesLocalhost.has(on) && window()?.platform === "windows") {
+            try { this.sharesLocalhost.set(on, isWsl(await readTextFile("/proc/sys/kernel/osrelease", { on }))); } catch {}
           }
         } catch {} // the machine is away: no ports shown for it
       }
@@ -260,7 +259,7 @@ export default class Spaces extends View {
         .child(`#${pr.number}`));
     }
     for (const p of this.ports.get(JSON.stringify([w.machine ?? null, place(w, ps)])) ?? []) {
-      const url = portUrl(p, w.machine ?? null, this.sharesLocalhost[w.machine] === true);
+      const url = portUrl(p, w.machine ?? null, this.sharesLocalhost.get(w.machine) === true);
       out.push(div().id(`port-${w.id}-${p.port}`).flex_none().text_color(t.accent).hover((s) => s.text_color(t.foreground))
         .tooltip(`${p.name} listens on ${p.host}:${p.port}\nclick: open ${url}`)
         .on_click((_e, cx) => { cx.stop_propagation(); cx.open_url(url); })
