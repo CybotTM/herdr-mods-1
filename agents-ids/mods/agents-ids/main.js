@@ -8,8 +8,8 @@
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, hc } from "herdr";
-import { hideSession, recentSessions, rememberSessions, shortSid } from "./extras.mjs";
+import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, hc, exec } from "herdr";
+import { closeFacts, sameTerminal, doingLine, hideSession, recentSessions, rememberSessions, shortSid } from "./extras.mjs";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -76,6 +76,22 @@ function icon(p, size, color) {
 
 export default class Agents extends View {
   init(_props, cx) {
+    // agents-ids: a separate dialog view checks the exact terminal's machine and folder.
+    if (props()?.closeTarget) {
+      this.handle = cx.focus_handle();
+      this.handle.focus();
+      this.gitCount = null;
+      const target = terminals().find(k => k.address === props().closeTarget);
+      const on = target?.address.includes("/") ? target.address.split("/")[0] : null;
+      if (target?.cwd) cx.spawn(async (cx) => {
+        try {
+          const r = await exec("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", "-C", target.cwd, "status", "--porcelain"], { on });
+          if (r.code === 0) this.gitCount = r.stdout ? r.stdout.trimEnd().split("\n").length : 0;
+        } catch {}
+        cx.notify();
+      });
+      return;
+    }
     if (props()?.sortMenu) return;
     this.folded = new Set();
     // Each agent's last state and when it changed (ms), kept across restarts.
@@ -277,12 +293,14 @@ export default class Agents extends View {
       .text_size(12.5)
       .when(on, (el) => el.bg(t.raised))
       .hover((s) => s.bg(t.hover))
+      .on_hover((on, cx) => { if (on) this.hovered = k.address; else if (this.hovered === k.address) this.hovered = null; cx.notify(); })
       .on_click(() => this.peek(k.address))
       .children(s.lines.map(l => div().self_start().mt(-4).w(9).h(17).mr(4).flex_none()
         .when(Boolean(l), el => el.border_l(1.5).border_color(t.input))
         .when(l === "└" || l === "├", el => el.border_b(1.5).rounded_bl(6))))
       .when(Boolean(pic), el => el.child(div().mr(8).child(pic)))
       .child(div().flex_1().truncate().text_color(on ? t.foreground : t.muted).child(k.name || k.template || k.program?.name || k.address))
+      .when(this.hovered === k.address, el => el.child(this.xButton(t, `close-${k.address}`, "Check before closing agent", () => this.askClose(k.address))))
       .child(this.status(t, { status: st }, compact));
   }
 
@@ -297,8 +315,41 @@ export default class Agents extends View {
     return div().size(7).mx(3).flex_none().rounded(4).bg(a.status === "done" ? color : t.dim + "00");
   }
 
+  // agents-ids: confirmation never describes an unknown check as safe.
+  closeDialog(t) {
+    const p = props();
+    const all = terminals();
+    const target = all.find(k => k.address === p.closeTarget && k.state === "live");
+    const status = agents().find(a => a.address === p.closeTarget)?.status ?? target?.status;
+    const children = target ? this.tree(all, p.closeTarget).length : null;
+    const facts = closeFacts(status, this.gitCount, children);
+    const colors = [status === "working" || !status ? t.blocked : t.muted, this.gitCount === 0 ? t.muted : t.blocked, children === 0 ? t.muted : t.blocked, t.blocked];
+    const button = (id, text, click) => div().id(id).px(14).h(32).rounded(8).flex().items_center().bg(t.raised).text_color(t.foreground).hover(s => s.bg(t.hover)).on_click(click).child(text);
+    return v_flex().id("close-check").track_focus(this.handle).size_full().p(18).gap(10).bg(t.popover)
+      .on_key_down((e, cx) => { if (e.key === "escape") { closeOverlay(p.overlay); cx.stop_propagation(); } })
+      .child(div().text_size(15).font_semibold().text_color(t.foreground).child("Safe to close?"))
+      .children(facts.map((fact, i) => div().text_size(12).text_color(colors[i]).child(fact)))
+      .child(div().flex_1().text_size(12).text_color(this.closeError ? t.blocked : t.muted).child(this.closeError || "Closing ends this terminal and all its sub-agents."))
+      .child(h_flex().justify_end().gap(8)
+        .child(button("close-cancel", "Cancel", () => closeOverlay(p.overlay)))
+        .child(button("close-confirm", "Close", (_e, cx) => {
+          if (!sameTerminal(p.identity, terminals().find(k => k.address === p.closeTarget))) {
+            this.closeError = "Terminal changed, not closed"; cx.notify(); return;
+          }
+          run("terminal.kill", { terminal: p.closeTarget }); closeOverlay(p.overlay);
+        })));
+  }
+
+  askClose(address) {
+    const target = terminals().find(k => k.address === address && k.state === "live");
+    if (!target) return;
+    const identity = { address, state: target.state, created_ms: target.created_ms, labels: { "agent.session": target.labels?.["agent.session"] } };
+    openOverlay({ mod: "agents-ids", kind: "dialog", width: 380, height: 255, props: { closeTarget: address, identity } });
+  }
+
   render(cx) {
     const t = theme();
+    if (props()?.closeTarget) return this.closeDialog(t);
     if (props()?.sortMenu) return this.sortMenu(t);
     const collapsed = narrow();
     const sort = sortOf();
@@ -411,6 +462,8 @@ export default class Agents extends View {
       const full = byPriority || isPinned;
       const name = full ? a.space_name || label(a) : more ?? (/^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a));
       const sid = this.sessions.get(a.address);
+      // agents-ids: the activity label is optional for integrations that don't report it.
+      const doing = doingLine(all.find((k) => k.address === a.address)?.labels, a.status, now);
       const ids = h_flex()
         .id(`ids-${a.address}`)
         .min_w(0)
@@ -428,7 +481,7 @@ export default class Agents extends View {
       return h_flex()
         .id(`ag-${a.address}`)
         .px(8)
-        .h(44)
+        .h(doing ? 58 : 44)
         .flex_none()
         .rounded(8)
         .items_center()
@@ -452,10 +505,11 @@ export default class Agents extends View {
           .child(h_flex().min_w(0).gap(5).items_center()
             .child(div().min_w(0).max_w(full && more ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(name))
             .when(full && Boolean(more), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${more}`))))
-          .child(ids))
+          .child(ids)
+          .when(Boolean(doing), (el) => el.child(div().min_w(0).truncate().text_size(11).text_color(doing.stale ? t.blocked : t.dim).tooltip(doing.tip || doing.text).child(doing.text))))
         .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machine)))
         .when(subs.length > 0, el => el.child(fold(a, subs)))
-        .when(this.hovered === a.address, el => el.child(pin))
+        .when(this.hovered === a.address, el => el.child(pin).child(this.xButton(t, `close-${a.address}`, "Check before closing agent", () => this.askClose(a.address))))
         .when(this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(duration(now - when))))
         .child(this.status(t, a, byPriority && !isPinned));
     };

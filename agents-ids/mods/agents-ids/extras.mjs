@@ -9,6 +9,33 @@ export const shortSid = (sid) => {
   return s.slice(0, /^[0-9a-f]{8}-[0-9a-f]{4}-7/i.test(s) ? 13 : 8);
 };
 
+// Labels are untrusted; never let them add lines to the sidebar.
+export function doingLine(labels, status, now) {
+  const text = typeof labels?.["agent.doing"] === "string" ? labels["agent.doing"].replace(/\s+/g, " ").trim().slice(0, 60) : "";
+  if (!text) return null;
+  const since = Number(labels?.["agent.doing.since"]);
+  if (!Number.isFinite(since) || since <= 0 || since * 1000 > now) return { text, stale: false, tip: "" };
+  const ms = now - since * 1000;
+  const m = Math.floor(ms / 60000);
+  const age = m < 1 ? "<1m" : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`;
+  const stale = status === "working" && ms > 30 * 60000;
+  return { text: `${text} · ${age}`, stale, tip: stale ? `no change for ${age}` : "" };
+}
+
+export function sameTerminal(before, after) {
+  return Boolean(before && after && (typeof before.created_ms === "number" || before.labels?.["agent.session"]) && after.state === "live" && before.address === after.address &&
+    before.created_ms === after.created_ms && before.labels?.["agent.session"] === after.labels?.["agent.session"]);
+}
+
+export function closeFacts(status, git, children) {
+  return [
+    `Agent: ${status || "unknown"}`,
+    `Git: ${git == null ? "unknown" : git ? `${git} uncommitted changes` : "no uncommitted changes"}`,
+    `Sub-agents: ${children == null ? "unknown" : children || "none"}`,
+    "Background processes: unknown",
+  ];
+}
+
 const RESUME = {
   claude: (id) => ["claude", "--resume", id],
   codex: (id) => ["codex", "resume", id],
